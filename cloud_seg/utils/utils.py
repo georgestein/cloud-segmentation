@@ -1,5 +1,6 @@
 import rioxarray
 import xrspatial.multispectral as ms
+import xarray
 import rasterio.warp
 import pandas as pd
 import os
