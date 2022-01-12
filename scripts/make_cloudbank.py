@@ -170,7 +170,7 @@ def save_npz_chip_arrays_to_tif(params: dict):
 
                 band_loc = band_diri / f"{band}.tif"
                 # if not os.path.isfile(band_loc):
-                band_image = Image.fromarray(images_cloudless_all[band][i])        
+                band_image = Image.fromarray(images_cloudless_all[band][iimg])        
                 band_image.save(band_loc)   
 
 def find_and_return_most_similar_image(params, image, label, images_cloudless, brightness_correct_image_cloudless=False):

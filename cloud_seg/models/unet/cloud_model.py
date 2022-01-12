@@ -59,7 +59,7 @@ class CloudModel(pl.LightningModule):
         self.num_channels = len(bands)
         
         # optional modeling params
-        self.backbone = self.hparams.get("backbone", "efficientnet-b3")
+        self.backbone = self.hparams.get("backbone", "efficientnet-b0")
         self.weights = self.hparams.get("weights", None)
         
         self.loss_function = self.hparams.get("loss_function", "dice")

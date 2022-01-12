@@ -45,14 +45,17 @@ def main():
    
     parser.add_argument("--augmentations_string", type=str, default='nrvfhfrr',
                         help="training augmentations to use")
-    parser.add_argument("--log_dir", type=str, default='logs/',
+    parser.add_argument("--LOG_DIR", type=str, default='logs/',
                         help="directory to put logfiles")
-    
+    parser.add_argument("--MODEL_SAVE_DIR", type=str, default='../trained_models/unet/',
+                        help="directory to save trained model")
+        
     parser.add_argument("--gpu", action="store_true",
                         help="Use GPU")
     
     parser.add_argument("--test_run", action="store_true",
                         help="Subsample training and validation data")
+    
     parser.add_argument("--test_run_nchips", type=int, default=512,
                         help="Subsample training and validation data to this size")
                 
@@ -72,7 +75,7 @@ def main():
                         help="Optimizer to use", choices=['ADAM', 'SGD'])
   
     parser.add_argument("--backbone", type=str, default='efficientnet-b0',
-                        help="Optimizer to use", choices=['efficientnet-b0', 'resnet34'])
+                        help="Architecture to use", choices=['efficientnet-b0', 'resnet34'])
   
     parser.add_argument("--loss_function", type=str, default='dice',
                         help="loss_function to use", choices=['SGD', 'Dice'])
@@ -83,7 +86,8 @@ def main():
         
     hparams['persistent_workers'] = True
     hparams['precision'] = 32
-    Path(hparams['log_dir']).mkdir(parents=True, exist_ok=True)
+    Path(hparams['LOG_DIR']).mkdir(parents=True, exist_ok=True)
+    Path(hparams['MODEL_SAVE_DIR']).mkdir(parents=True, exist_ok=True)
     
     pl.seed_everything(hparams['seed'], workers=True)
 
@@ -205,12 +209,15 @@ def main():
     )
 
 
-    tb_logger = pl_loggers.TensorBoardLogger(save_dir=hparams['log_dir'], name=hparams['model_training_name']),
+    tb_logger = pl_loggers.TensorBoardLogger(save_dir=hparams['LOG_DIR'], name=hparams['model_training_name']),
 
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath=hparams['log_dir'],
-                                                       monitor="val_iou_epoch",
-                                                       mode="max",
-                                                       verbose=True,
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        dirpath=hparams['MODEL_SAVE_DIR'],
+        filename='{epoch}-{val_iou_epoch:.2f}',
+        monitor="val_iou_epoch",
+        mode="max",
+        verbose=True,
+        save_last=True
     )
 
     early_stopping_callback = pl.callbacks.early_stopping.EarlyStopping(
