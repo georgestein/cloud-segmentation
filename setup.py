@@ -7,7 +7,7 @@ setup(
     author="George Stein",
     author_email='george.f.stein@gmail.com',
     packages=find_packages(), 
-    include_package_data=True
+    include_package_data=True,
     install_requires=[],
     dependency_links=[]
 )

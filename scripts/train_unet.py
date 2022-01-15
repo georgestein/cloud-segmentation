@@ -9,6 +9,7 @@ import pytorch_lightning as pl
 import glob
 from pathlib import Path
 import argparse
+import os
 
 from pytorch_lightning import loggers as pl_loggers
 import albumentations as A
@@ -27,72 +28,25 @@ TRAIN_LABELS = DATA_DIR / "train_labels"
 
 band_mean_std = np.load(DATA_DIR / 'measured_band_stats.npy', allow_pickle=True).item()
 
-def main():
+def main(args):
     
-    parser = argparse.ArgumentParser(description='runtime parameters')
-    parser.add_argument("--bands", nargs='+' , default=["B02", "B03", "B04", "B08"],
-                        help="bands desired")
-    parser.add_argument("--bands_new", nargs='+', default=None,
-                        help="additional bands to use beyond original four")
-    parser.add_argument("-cv", "--cross_validation_split", type=int, default=0,
-                        help="cross validation split to use for training") 
+    hparams = vars(args)
+    if hparams['verbose']: print("Parameters are: ", hparams)
 
-    parser.add_argument("--seed", type=int , default=13579,
-                        help="random seed for train test split")
-   
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="increase output verbosity")
-   
-    parser.add_argument("--augmentations_string", type=str, default='nrvfhfrr',
-                        help="training augmentations to use")
-    parser.add_argument("--LOG_DIR", type=str, default='logs/',
-                        help="directory to put logfiles")
-    parser.add_argument("--MODEL_SAVE_DIR", type=str, default='../trained_models/unet/',
-                        help="directory to save trained model")
-        
-    parser.add_argument("--gpu", action="store_true",
-                        help="Use GPU")
-    
-    parser.add_argument("--test_run", action="store_true",
-                        help="Subsample training and validation data")
-    
-    parser.add_argument("--test_run_nchips", type=int, default=512,
-                        help="Subsample training and validation data to this size")
-                
-    parser.add_argument("--cloud_augment", action="store_true",
-                        help="Use cloud augmentation")
-              
-    parser.add_argument("--num_workers", type=int, default=3,
-                        help="number of data loader workers")
-  
-    parser.add_argument("--batch_size", type=int, default=8,
-                        help="Batch size for model training")
-  
-    parser.add_argument("--learning_rate", type=float, default=1e-3,
-                        help="Learning rate for model optimization")
-  
-    parser.add_argument("--optimizer", type=str, default='ADAM',
-                        help="Optimizer to use", choices=['ADAM', 'SGD'])
-  
-    parser.add_argument("--backbone", type=str, default='efficientnet-b0',
-                        help="Architecture to use", choices=['efficientnet-b0', 'resnet34'])
-  
-    parser.add_argument("--loss_function", type=str, default='dice',
-                        help="loss_function to use", choices=['SGD', 'Dice'])
-
-
-    hparams = vars(parser.parse_args())
-    hparams['bands_use'] = sorted(hparams['bands'] + hparams['bands_new']) if hparams['bands_new'] is not None else hparams['bands']
-        
-    hparams['persistent_workers'] = True
-    hparams['precision'] = 32
-    Path(hparams['LOG_DIR']).mkdir(parents=True, exist_ok=True)
-    Path(hparams['MODEL_SAVE_DIR']).mkdir(parents=True, exist_ok=True)
-    
     pl.seed_everything(hparams['seed'], workers=True)
 
+    hparams['bands_use'] = sorted(hparams['bands'] + hparams['bands_new']) if hparams['bands_new'] is not None else hparams['bands']
+    
+    hparams['precision'] = 32
+    
+    hparams['OUTPUT_DIR'] = os.path.join(hparams['OUTPUT_DIR'], hparams['segmentation_model'])
+    Path(hparams['OUTPUT_DIR']).mkdir(parents=True, exist_ok=True)
+
+
+
+
     augs = [hparams['augmentations_string'][i:i+2] for i in range(0, len(hparams['augmentations_string']), 2)]
-    print(augs) 
+
     hparams['augmentations'] = {}
     if 'nr' in augs:
         hparams['augmentations']['Normalize'] = True
@@ -103,15 +57,30 @@ def main():
     if 'rr' in augs:
         hparams['augmentations']['RandomRotate90'] = True
 
-    print(hparams['augmentations'])
     
-    if hparams['verbose']: print("Parameters are: ", hparams)
+    # set up logger to have meaningful name
+    augmentations_used_string = ''
+    for k, v in hparams['augmentations'].items():
+        if v:
+            augmentations_used_string += '_'+k
 
     dataset_str = 'originaldata'
     if hparams['cloud_augment']:
         dataset_str += '_cloudaugment'
     
+    hparams['model_training_name'] = f"{len(hparams['bands_use'])}band_{dataset_str}_{hparams['encoder_name']}_{hparams['loss_function']}_{augmentations_used_string}"
+    if hparams['test_run']:
+        model_training_name = 'test'
     
+    
+
+    hparams['LOG_DIR'] = os.path.join(hparams['OUTPUT_DIR'], hparams['model_training_name'], hparams['LOG_DIR'])
+    hparams['MODEL_DIR'] = os.path.join(hparams['OUTPUT_DIR'], hparams['model_training_name'], hparams['MODEL_DIR'])
+                                      
+    Path(hparams['LOG_DIR']).mkdir(parents=True, exist_ok=True)
+    Path(hparams['MODEL_DIR']).mkdir(parents=True, exist_ok=True)
+    
+
     val_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_features_meta_cv{hparams['cross_validation_split']}.csv")
     val_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_labels_meta_cv{hparams['cross_validation_split']}.csv")
     
@@ -186,16 +155,6 @@ def main():
     else:
         val_transforms = A.Compose(val_transforms)
 
-    # set up logger to have meaningful name
-    augmentations_used_string = ''
-    for k, v in hparams['augmentations'].items():
-        if v:
-            augmentations_used_string += '_'+k
-
-    hparams['model_training_name'] = f"{len(hparams['bands_use'])}band_{dataset_str}_{hparams['backbone']}_{hparams['loss_function']}_{augmentations_used_string}"
-    if hparams['test_run']:
-        model_training_name = 'test'
-    
     cloud_model = CloudModel(
         bands=hparams['bands_use'],
         x_train=train_x,
@@ -209,10 +168,13 @@ def main():
     )
 
 
-    tb_logger = pl_loggers.TensorBoardLogger(save_dir=hparams['LOG_DIR'], name=hparams['model_training_name']),
+    tb_logger = pl_loggers.TensorBoardLogger(
+        save_dir=hparams['LOG_DIR'],
+        name='log',
+    )
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=hparams['MODEL_SAVE_DIR'],
+        dirpath=hparams['MODEL_DIR'],
         filename='{epoch}-{val_iou_epoch:.2f}',
         monitor="val_iou_epoch",
         mode="max",
@@ -227,7 +189,9 @@ def main():
         verbose=True,
     )
 
-    lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval='epoch')
+    lr_monitor = pl.callbacks.LearningRateMonitor(
+        logging_interval='epoch'
+    )
 
     # "ddp_spawn" needed for interactive jupyter, but best to use "ddp" if not
     trainer = pl.Trainer(
@@ -241,7 +205,7 @@ def main():
         check_val_every_n_epoch=1,
         num_sanity_val_steps=2,
         precision=hparams['precision'],
-        strategy="ddp",
+        strategy=hparams['strategy'],
         # plugins=DDPSpawnPlugin(find_unused_parameters=False),
         callbacks=[checkpoint_callback, early_stopping_callback, lr_monitor],
         logger=tb_logger,
@@ -251,4 +215,87 @@ def main():
     trainer.fit(model=cloud_model)
     
 if __name__=='__main__':
-    main()
+    
+    parser = argparse.ArgumentParser(description='runtime parameters')
+    
+    # Data and IO
+    parser.add_argument("--bands", nargs='+' , default=["B02", "B03", "B04", "B08"],
+                        help="bands desired")
+    
+    parser.add_argument("--bands_new", nargs='+', default=None,
+                        help="additional bands to use beyond original four")
+    
+    parser.add_argument("-cv", "--cross_validation_split", type=int, default=0,
+                        help="cross validation split to use for training") 
+
+    parser.add_argument("--OUTPUT_DIR", type=str, default='../trained_models/',
+                        help="Directory to save logs and trained models model")
+                                      
+    parser.add_argument("--LOG_DIR", type=str, default='logs/',
+                        help="Sub-directory of OUTPUT_DIR to save logs")
+    
+    parser.add_argument("--MODEL_DIR", type=str, default='model/',
+                        help="Sub-directory of OUTPUT_DIR to save logs")
+
+    parser.add_argument("--seed", type=int , default=13579,
+                        help="random seed for train test split")
+   
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="increase output verbosity")
+   
+
+
+    # Training (gpus, optimization, etc...)
+    parser.add_argument("--gpu", action="store_true",
+                        help="Use GPU")
+    
+    parser.add_argument("--strategy", type=str, default='ddp',
+                        help="Distributed training strategy")
+        
+    parser.add_argument("--test_run", action="store_true",
+                        help="Subsample training and validation data")
+    
+    parser.add_argument("--test_run_nchips", type=int, default=512,
+                        help="Subsample training and validation data to this size")
+
+    parser.add_argument("--num_workers", type=int, default=3,
+                        help="number of data loader workers")
+    
+    parser.add_argument("--persistent_workers", action="store_false",
+                        help="Persistent data loader workers")
+    
+    parser.add_argument("--batch_size", type=int, default=8,
+                        help="Batch size for model training")
+    
+    parser.add_argument("--loss_function", type=str, default='dice',
+                        help="loss_function to use", choices=['SGD', 'Dice'])
+      
+    parser.add_argument("--learning_rate", type=float, default=1e-3,
+                        help="Learning rate for model optimization")
+  
+    parser.add_argument("--optimizer", type=str, default='ADAM',
+                        help="Optimizer to use", choices=['ADAM', 'SGD'])
+    
+    parser.add_argument("--scheduler", type=str, default='plateau',
+                        help="Learning rate scheduler to use", choices=['plateau', 'EXPONENTIAL', 'cosine'])
+    
+    parser.add_argument("--plot_validation_images", action="store_true",
+                        help="Plot final batch to tensorboard")
+              
+        
+    # Models and Augmentations
+    parser.add_argument("--segmentation_model", type=str, default='unet',
+                        help="Encocoder architecture to use", choices=['unet', 'DeepLabV3Plus'])
+  
+    parser.add_argument("--encoder_name", type=str, default='efficientnet-b0',
+                        help="Encocoder architecture to use", choices=['efficientnet-b0', 'resnet18', 'resnet34', 'vgg19_bn'])
+  
+    parser.add_argument("--augmentations_string", type=str, default='nrvfhfrr',
+                        help="training augmentations to use")
+    
+    parser.add_argument("--cloud_augment", action="store_true",
+                        help="Use cloud augmentation")
+
+    args = parser.parse_args()
+    
+    main(args)
