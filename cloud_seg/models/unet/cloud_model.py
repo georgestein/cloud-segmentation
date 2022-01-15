@@ -59,20 +59,24 @@ class CloudModel(pl.LightningModule):
         self.num_channels = len(bands)
         
         # optional modeling params
-        self.backbone = self.hparams.get("backbone", "efficientnet-b0")
+        self.segmentation_model = self.hparams.get("segmentation_model", "unet")
+        self.encoder_name = self.hparams.get("encoder_name", "efficientnet-b0")
         self.weights = self.hparams.get("weights", None)
         
-        self.loss_function = self.hparams.get("loss_function", "dice")
-
+        self.loss_function = self.hparams.get("loss_function", "dice")        
         self.optimizer = self.hparams.get("optimizer", "ADAM")
         self.scheduler = self.hparams.get("scheduler", "PLATEAU")
         
-        self.batch_size = self.hparams.get("batch_size", 8)
         self.learning_rate = self.hparams.get("learning_rate", 1e-3)
         self.momentum = self.hparams.get("momentum", 0.9)
+        self.T_0 = self.hparams.get("T_0", 10)
+        self.eta_min = self.hparams.get("eta_min", 1e-5)
+      
+        self.reduce_learning_rate_factor = self.hparams.get("reduce_learning_rate_factor", 0.1)
+
         self.patience = self.hparams.get("patience", 5)
         self.learning_rate_patience = self.hparams.get("learning_rate_patience", 5)
-        self.reduce_learning_rate_factor = self.hparams.get("reduce_learning_rate_factor", 0.1)
+        self.batch_size = self.hparams.get("batch_size", 8)
 
         self.num_workers = self.hparams.get("num_workers", 2)
         self.pin_memory = self.hparams.get("pin_memory", True)
@@ -172,16 +176,27 @@ class CloudModel(pl.LightningModule):
         if self.loss_function == "BCE":
             preds = torch.sigmoid(preds)
             
+        
         preds = (preds > 0.5) * 1  # convert to int
 
-        batch_intersection, batch_union = intersection_and_union(preds, y)
+        # batch_intersection, batch_union = intersection_and_union(preds, y)
     
         self.train_IoU(preds, y)
 
-        self.log("train_performance", 
-                 {"iou": self.train_IoU},
-                 on_step=self.log_on_step, on_epoch=True, prog_bar=self.progress_bar)
-        self.log("train_loss", loss, on_step=self.log_on_step, on_epoch=True, prog_bar=self.progress_bar)
+        self.log(
+            "train_performance", 
+            {"iou": self.train_IoU},
+            on_step=self.log_on_step,
+            on_epoch=True,
+            prog_bar=self.progress_bar,
+        )
+        self.log(
+            "train_loss",
+            loss,
+            on_step=self.log_on_step,
+            on_epoch=True,
+            prog_bar=self.progress_bar,
+        )
 
         return loss
 
@@ -254,7 +269,8 @@ class CloudModel(pl.LightningModule):
         # if idevice == 0:
         # if self.global_rank==0:
         if self.plot_validation_images:
-            self.logger[0].experiment.add_figure("chip_label_prediction", 
+            # self.logger[0].experiment.add_figure("chip_label_prediction", 
+            self.logger.experiment.add_figure("chip_label_prediction", 
                                                  plot_prediction_grid(self.last_x,
                                                                       self.last_y,
                                                                       self.last_pred,
@@ -294,22 +310,46 @@ class CloudModel(pl.LightningModule):
     def configure_optimizers(self):
         
         if self.optimizer.upper()=="ADAM":
-            optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+            optimizer = torch.optim.Adam(
+                self.model.parameters(),
+                lr=self.learning_rate,
+            )
+            
+        if self.optimizer.upper()=="ADAMW":
+            optimizer = torch.optim.AdamW(
+                self.model.parameters(),
+                lr=self.learning_rate,
+            )
             # sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=10)
-            # sch = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(opt, T_0=10, eta_min=1e-5)
 
         if self.optimizer.upper()=="SGD":
-            optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=self.momentum)
+            optimizer = torch.optim.SGD(
+                self.model.parameters(),
+                lr=self.learning_rate,
+                momentum=self.momentum,
+            )
         
         if self.scheduler.upper()=="EXPONENTIAL":
-            scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+            scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                optimizer,
+                gamma=0.95,
+            )
             
-        if self.scheduler.upper()=="COSINEANNEALING":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, eta_min=1e-5)
-            
+        if self.scheduler.upper()=="COSINE":
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=self.T_0,
+                eta_min=self.eta_min,
+            ) 
+            # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(opt, T_0=10, eta_min=1e-5)
+  
         if self.scheduler.upper()=="PLATEAU":
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max',
-                                                                   factor=self.reduce_learning_rate_factor, patience=self.learning_rate_patience)
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                'max',
+                factor=self.reduce_learning_rate_factor,
+                patience=self.learning_rate_patience,
+            )
             
             return {"optimizer": optimizer, 
                     "lr_scheduler": {
@@ -322,14 +362,27 @@ class CloudModel(pl.LightningModule):
                 
     ## Convenience Methods ##
     def _prepare_model(self):
-        # Instantiate U-Net model
-        unet_model = smp.Unet(
-            encoder_name=self.backbone,
-            encoder_weights=self.weights,
-            in_channels=self.num_channels,
-            classes=1,
-        )
-        if self.gpu:
-            unet_model.cuda()
+        
+        if self.segmentation_model.upper()=="UNET":
+            # Instantiate U-Net model
+            unet_model = smp.Unet(
+                encoder_name=self.encoder_name,
+                encoder_weights=self.weights,
+                in_channels=self.num_channels,
+                classes=1,
+            )
+            if self.gpu:
+                unet_model.cuda()
+                
+        if self.segmentation_model.upper()=="DEEPLABV3PLUS":
+            # Instantiate DeepLabV3Plus model (https://arxiv.org/abs/1802.02611v3)
+            unet_model = smp.DeepLabV3Plus(
+                encoder_name=self.encoder_name,
+                encoder_weights=self.weights,
+                in_channels=self.num_channels,
+                classes=1,
+            )
+            if self.gpu:
+                unet_model.cuda()
 
         return unet_model
