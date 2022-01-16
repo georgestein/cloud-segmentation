@@ -33,9 +33,9 @@ DATA_DIR_CLOUDLESS = DATA_DIR / 'cloudless/'
 DATA_DIR_CLOUDLESS_MOST_SIMILAR = DATA_DIR / 'cloudless_most_similar/'
 DATA_DIR_CLOUDLESS_TIF = DATA_DIR / 'cloudless_tif/'
 
-DATA_DIR_OUT = Path.cwd().parent.resolve() / "notebooks/"
+DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays"
 
-PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/test/predictions/"
+PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_efficientnet-b0_dice__Normalize_VerticalFlip_HorizontalFlip_RandomRotate90/predictions/"
 
 TRAIN_FEATURES = DATA_DIR / "train_features"
 TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"
@@ -202,7 +202,7 @@ def run_on_chunk(ichunk):
     print("data, label, prediction shape: ", data['images'].shape, data['labels'].shape, data['preds'].shape)
 
     for k, v in data.items():
-        np.save(DATA_DIR_OUT / f"data/all_chunks/{k}_{ichip_start:06d}_{ichip_end:06d}.npy", v)
+        np.save(DATA_DIR_OUT / f"{k}_{ichip_start:06d}_{ichip_end:06d}.npy", v)
 
     print("Time elapsed = ", time.time()-tstart)
     
