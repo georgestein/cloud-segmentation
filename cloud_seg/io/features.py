@@ -76,3 +76,29 @@ def add_intensity(features, feature_names):
     feature_names += ['I']
 
     return features, feature_names
+
+def add_logintensity(features, feature_names):
+    """Add intensity to features."""
+    newfeature = np.zeros((features.shape[0]), dtype=features.dtype)
+    for band in BANDS:
+        idx = feature_names.index(band)
+        newfeature += features[..., idx]
+
+    newfeature = newfeature/len(BANDS)
+    newfeature = np.log10(newfeature)
+
+    features = np.concatenate((features, newfeature[..., np.newaxis]), axis=-1)
+    feature_names += ['logI']
+
+    return features, feature_names
+
+def add_logbands(features, feature_names):
+    """Add intensity to features."""
+    for band in BANDS:
+        idx = feature_names.index(band)
+        newfeature = np.log10(features[..., idx])
+
+        features = np.concatenate((features, newfeature[..., np.newaxis]), axis=-1)
+        feature_names += [f'log{band}']
+
+    return features, feature_names
