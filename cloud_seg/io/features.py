@@ -7,6 +7,8 @@ NPIX = 512
 NFEATURES = 4
 BANDS = ['B02', 'B03', 'B04', 'B08']
 
+PIX_PER_IMAGE = NPIX*NPIX
+
 def load_dataset(name: str, data_dir: os.PathLike, max_images: int=None):
     """Load compiled datasets of images and labels.
 
@@ -102,3 +104,27 @@ def add_logbands(features, feature_names):
         feature_names += [f'log{band}']
 
     return features, feature_names
+
+def sample_compiled_images(image_path, label_path, npix):
+    """Sample `npix` pixels from each image in a compiled dataset."""
+    pixels_to_sample = get_pixels_to_sample(npix)
+    images = np.load(image_path)
+    labels = np.load(label_path)
+    nimages, nfeatures, npixx, npixy = images.shape
+    sampled_features = np.zeros((nimages, npix, nfeatures), dtype=images.dtype)
+    sampled_labels = np.zeros((nimages, npix), dtype=labels.dtype)
+    for i, pixidx in enumerate(pixels_to_sample):
+        idxx, idxy = np.unravel_index(pixidx, (NPIX, NPIX))
+        sampled_features[:, i, :] = images[:, :, idxx, idxy]
+        sampled_labels[:, i] = labels[:, idxx, idxy]
+    return sampled_features.reshape(-1, nfeatures), sampled_labels
+
+def get_pixels_to_sample(npix_to_sample):
+    pixels_to_sample = []
+    npix_sampled = 0
+    while npix_sampled < npix_to_sample:
+        next_pix = random.randrange(PIX_PER_IMAGE)
+        if next_pix not in pixels_to_sample:
+            pixels_to_sample += [next_pix]
+            npix_sampled += 1
+    return pixels_to_sample
