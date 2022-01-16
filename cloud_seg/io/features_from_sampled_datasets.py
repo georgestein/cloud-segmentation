@@ -1,4 +1,4 @@
-from cloud_seg.io.features import sample_compiled_images
+from .features import sample_compiled_images
 import wget
 import random
 import os
