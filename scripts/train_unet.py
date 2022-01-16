@@ -15,6 +15,7 @@ from pytorch_lightning import loggers as pl_loggers
 import albumentations as A
 
 from cloud_seg.models.unet.cloud_model import CloudModel
+from cloud_seg.utils.augmentations import CloudAugmentations
 
 DATA_DIR = Path.cwd().parent.resolve() / "data/"
 DATA_DIR_MODEL_TRAINING = DATA_DIR / "model_training/"
@@ -36,33 +37,29 @@ def main(args):
     pl.seed_everything(hparams['seed'], workers=True)
 
     hparams['bands_use'] = sorted(hparams['bands'] + hparams['bands_new']) if hparams['bands_new'] is not None else hparams['bands']
-    
     hparams['precision'] = 32
     
+    hparams['band_means'] = [band_mean_std[i]['mean'] for i in hparams['bands_use']]
+    hparams['band_stds'] = [band_mean_std[i]['std'] for i in hparams['bands_use']]
     hparams['OUTPUT_DIR'] = os.path.join(hparams['OUTPUT_DIR'], hparams['segmentation_model'])
     Path(hparams['OUTPUT_DIR']).mkdir(parents=True, exist_ok=True)
 
-
-
-
-    augs = [hparams['augmentations_string'][i:i+2] for i in range(0, len(hparams['augmentations_string']), 2)]
-
-    hparams['augmentations'] = {}
-    if 'nr' in augs:
-        hparams['augmentations']['Normalize'] = True
-    if 'vf' in augs:
-        hparams['augmentations']['VerticalFlip'] = True
-    if 'hf' in augs:
-        hparams['augmentations']['HorizontalFlip'] = True
-    if 'rr' in augs:
-        hparams['augmentations']['RandomRotate90'] = True
-
     
-    # set up logger to have meaningful name
-    augmentations_used_string = ''
-    for k, v in hparams['augmentations'].items():
-        if v:
-            augmentations_used_string += '_'+k
+    # Set up transforms using Albumentations library
+    Augs = CloudAugmentations(hparams)
+    train_transforms, train_transforms_names = Augs.add_augmentations()
+    train_transforms = A.Compose(train_transforms)
+
+    augs_val = ''
+    val_transforms, val_transforms_names = Augs.add_augmentations(augs_val)
+    val_transforms = A.Compose(val_transforms)
+
+    print(train_transforms_names, val_transforms_names)
+    print(train_transforms, val_transforms)
+    
+    
+    # set up logger and model outputs to have meaningful name
+    augmentations_used_string = '_'.join([name for name in train_transforms_names]) 
 
     dataset_str = 'originaldata'
     if hparams['cloud_augment']:
@@ -72,8 +69,6 @@ def main(args):
     if hparams['test_run']:
         model_training_name = 'test'
     
-    
-
     hparams['LOG_DIR'] = os.path.join(hparams['OUTPUT_DIR'], hparams['model_training_name'], hparams['LOG_DIR'])
     hparams['MODEL_DIR'] = os.path.join(hparams['OUTPUT_DIR'], hparams['model_training_name'], hparams['MODEL_DIR'])
                                       
@@ -81,6 +76,7 @@ def main(args):
     Path(hparams['MODEL_DIR']).mkdir(parents=True, exist_ok=True)
     
 
+    # Load Data
     val_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_features_meta_cv{hparams['cross_validation_split']}.csv")
     val_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_labels_meta_cv{hparams['cross_validation_split']}.csv")
     
@@ -108,7 +104,6 @@ def main(args):
 
         df_cloudbank = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"cloudbank_meta_cv{hparams['cross_validation_split']}.csv")
 
-
     if hparams['test_run']:
         nuse = hparams['test_run_nchips']
 
@@ -120,41 +115,8 @@ def main(args):
 
         df_cloudbank = df_cloudbank.iloc[:nuse] if df_cloudbank is not None else None
         
-    band_means = [band_mean_std[i]['mean'] for i in hparams['bands_use']]
-    band_stds = [band_mean_std[i]['std'] for i in hparams['bands_use']]
 
-    # set up transforms in albumentations 
-    train_transforms = []
-    if hparams['augmentations']['Normalize']:
-        train_transforms.append(A.Normalize(mean=band_means,
-                                            std=band_stds,
-                                            max_pixel_value=1.0,
-                                            p=1.0))
-    if hparams['augmentations']['VerticalFlip']:
-        train_transforms.append(A.VerticalFlip(p=0.5))
-    if hparams['augmentations']['HorizontalFlip']:
-        train_transforms.append(A.HorizontalFlip(p=0.5))
-    if hparams['augmentations']['RandomRotate90']:
-        train_transforms.append(A.RandomRotate90(p=0.5))
-
-
-    val_transforms = []
-    if hparams['augmentations']['Normalize']:
-        val_transforms.append(A.Normalize(mean=band_means,
-                                            std=band_stds,
-                                            max_pixel_value=1.0,
-                                            p=1.0))
-
-    if train_transforms==[]:
-        train_transforms = None
-    else:
-        train_transforms = A.Compose(train_transforms)
-
-    if val_transforms==[]:
-        val_transforms = None
-    else:
-        val_transforms = A.Compose(val_transforms)
-
+    # Set up models and callbacks
     cloud_model = CloudModel(
         bands=hparams['bands_use'],
         x_train=train_x,
@@ -166,7 +128,6 @@ def main(args):
         val_transforms=val_transforms,
         hparams=hparams,
     )
-
 
     tb_logger = pl_loggers.TensorBoardLogger(
         save_dir=hparams['LOG_DIR'],
@@ -193,6 +154,7 @@ def main(args):
         logging_interval='epoch'
     )
 
+    # Train model
     # "ddp_spawn" needed for interactive jupyter, but best to use "ddp" if not
     trainer = pl.Trainer(
         gpus=-1,
@@ -288,9 +250,9 @@ if __name__=='__main__':
                         help="Encocoder architecture to use", choices=['unet', 'DeepLabV3Plus'])
   
     parser.add_argument("--encoder_name", type=str, default='efficientnet-b0',
-                        help="Encocoder architecture to use")#, choices=['efficientnet-b0', 'resnet18', 'resnet34', 'vgg19_bn'])
+                        help="Encocoder architecture to use", choices=['efficientnet-b0', 'resnet18', 'resnet34', 'vgg19_bn'])
   
-    parser.add_argument("--augmentations_string", type=str, default='nrvfhfrr',
+    parser.add_argument("--augmentations", type=str, default='vfhfrrnr',
                         help="training augmentations to use")
     
     parser.add_argument("--cloud_augment", action="store_true",

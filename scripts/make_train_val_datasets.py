@@ -20,6 +20,8 @@ TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"
 
 TRAIN_LABELS = DATA_DIR / "train_labels"
 
+CHIP_IDS_REMOVE_FILE = DATA_DIR / "BAD_CHIP_DATA/chip_ids_remove_from_train_test.txt"
+
 assert TRAIN_FEATURES.exists(), TRAIN_LABELS.exists()
 
 Path(DATA_DIR_OUT).mkdir(parents=True, exist_ok=True)
@@ -48,6 +50,9 @@ def construct_dataframe(params: dict):
         df_meta = df_meta[has_banddata_on_disk]
 
         df_meta = utils.add_paths(df_meta, TRAIN_FEATURES_NEW, bands=bands_new)
+        
+    CHIP_IDS_REMOVE = list(np.loadtxt(CHIP_IDS_REMOVE_FILE, dtype=str))
+    df_meta = df_meta[~df_meta["chip_id"].isin(CHIP_IDS_REMOVE)]
     print(f"\nNumber of chips in dataset is {len(df_meta)}")
     return df_meta
 
