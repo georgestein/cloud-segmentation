@@ -33,7 +33,7 @@ DATA_DIR_CLOUDLESS = DATA_DIR / 'cloudless/'
 DATA_DIR_CLOUDLESS_MOST_SIMILAR = DATA_DIR / 'cloudless_most_similar/'
 DATA_DIR_CLOUDLESS_TIF = DATA_DIR / 'cloudless_tif/'
 
-DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays"
+DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
 
 PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_efficientnet-b0_dice__Normalize_VerticalFlip_HorizontalFlip_RandomRotate90/predictions/"
 
@@ -72,6 +72,9 @@ params['outsize'] = [512, 512]
 if params['verbose']: print("Parameters are: ", params)
     
 train_meta = pd.read_csv(DATA_DIR / "train_metadata.csv")
+
+# Shuffle chips
+train_meta = train_meta.sample(frac=1, random_state=42).reset_index(drop=True)
 
 # how many different chip ids, locations, and datetimes are there?
 print(train_meta[["chip_id", "location", "datetime"]].nunique())
