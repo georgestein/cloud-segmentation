@@ -2,6 +2,7 @@
 
 import os
 import numpy as np
+import random
 
 NPIX = 512
 NFEATURES = 4
@@ -117,7 +118,7 @@ def sample_compiled_images(image_path, label_path, npix):
         idxx, idxy = np.unravel_index(pixidx, (NPIX, NPIX))
         sampled_features[:, i, :] = images[:, :, idxx, idxy]
         sampled_labels[:, i] = labels[:, idxx, idxy]
-    return sampled_features.reshape(-1, nfeatures), sampled_labels
+    return sampled_features.reshape(-1, nfeatures), sampled_labels.reshape(-1)
 
 def get_pixels_to_sample(npix_to_sample):
     pixels_to_sample = []
