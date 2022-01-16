@@ -268,7 +268,7 @@ if __name__=='__main__':
                         help="Batch size for model training")
     
     parser.add_argument("--loss_function", type=str, default='dice',
-                        help="loss_function to use", choices=['SGD', 'Dice'])
+                        help="loss_function to use", choices=['bce', 'Dice'])
       
     parser.add_argument("--learning_rate", type=float, default=1e-3,
                         help="Learning rate for model optimization")
@@ -288,7 +288,7 @@ if __name__=='__main__':
                         help="Encocoder architecture to use", choices=['unet', 'DeepLabV3Plus'])
   
     parser.add_argument("--encoder_name", type=str, default='efficientnet-b0',
-                        help="Encocoder architecture to use", choices=['efficientnet-b0', 'resnet18', 'resnet34', 'vgg19_bn'])
+                        help="Encocoder architecture to use")#, choices=['efficientnet-b0', 'resnet18', 'resnet34', 'vgg19_bn'])
   
     parser.add_argument("--augmentations_string", type=str, default='nrvfhfrr',
                         help="training augmentations to use")

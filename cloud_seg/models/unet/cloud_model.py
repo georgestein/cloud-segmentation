@@ -341,7 +341,6 @@ class CloudModel(pl.LightningModule):
                 T_0=self.T_0,
                 eta_min=self.eta_min,
             ) 
-            # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(opt, T_0=10, eta_min=1e-5)
   
         if self.scheduler.upper()=="PLATEAU":
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(

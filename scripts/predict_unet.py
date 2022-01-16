@@ -31,9 +31,18 @@ parser.add_argument("-cv", "--cross_validation_split", type=int, default=0,
 
 parser.add_argument("--batch_size", type=int, default=8,
                     help="Batch size for model inference")
-  
+
+parser.add_argument("--INPUT_DIR", type=str, default='../trained_models/unet/4band_originaldata_efficientnet-b0_dice__Normalize_VerticalFlip_HorizontalFlip_RandomRotate90/',
+                    help="Directory to save logs and trained models model")
+
 parser.add_argument("--LOG_DIR", type=str, default='logs/',
-                    help="directory to put logfiles")
+                    help="Sub-directory of OUTPUT_DIR to save logs")
+
+parser.add_argument("--MODEL_DIR", type=str, default='model/',
+                    help="Sub-directory of OUTPUT_DIR to save logs")
+
+parser.add_argument("--OUTPUT_DIR", type=str, default='predictions/',
+                    help="Directory to save logs and trained models model")
 
 parser.add_argument("--gpu", action="store_true",
                     help="Use GPU")  
@@ -44,13 +53,13 @@ parser.add_argument("-v", "--verbose", action="store_true",
 parser.add_argument("--local_run", action="store_true",
                     help="Whether running locally or on planetary computer")
                     
-parser.add_argument("--model_dir", type=str, default='test/',
-                    help="directory to save trained model")
-
 parser.add_argument("--model_name", type=str, default='cloud_model.pt',
                     help="directory to save trained model")
 
-parser.add_argument("--backbone", type=str, default='efficientnet-b0',
+parser.add_argument("--segmentation_model", type=str, default='unet',
+                    help="Encocoder architecture to use", choices=['unet', 'DeepLabV3Plus'])
+  
+parser.add_argument("--encoder_name", type=str, default='efficientnet-b0',
                     help="Architecture to use", choices=['efficientnet-b0', 'resnet34'])
 
 parser.add_argument("--load_checkpoint", action="store_true",
@@ -59,14 +68,23 @@ parser.add_argument("--load_checkpoint", action="store_true",
 hparams = vars(parser.parse_args())
 hparams['weights'] = None
 hparams['bands_use'] = sorted(hparams['bands'] + hparams['bands_new']) if hparams['bands_new'] is not None else hparams['bands']
-                           
-if hparams['local_run']:              
+         
+# hparams['INPUT_DIR'] = os.path.join(hparams['INPUT_DIR'], hparams['segmentation_model'], hparams['model_training_name'])
+# hparams['MODEL_DIR'] = os.path.join(hparams['INPUT_DIR'], hparams['model_training_name'], hparams['MODEL_DIR'])
+# hparams['LOG_DIR'] = os.path.join(hparams['INPUT_DIR'], hparams['model_training_name'], hparams['OUTPUT_DIR'], hparams['LOG_DIR'])
+# hparams['OUTPUT_DIR'] = os.path.join(hparams['INPUT_DIR'], hparams['model_training_name'], hparams['OUTPUT_DIR'])
+
+# Path(hparams['LOG_DIR']).mkdir(parents=True, exist_ok=True)
+# Path(hparams['OUTPUT_DIR']).mkdir(parents=True, exist_ok=True)
+
+if hparams['local_run']:      
+    
     ROOT_DIR = Path.cwd().parent.resolve()
-    ASSETS_DIR = ROOT_DIR / "trained_models/unet/" / hparams['model_dir']  
-    MODEL_PATH = ASSETS_DIR / hparams['model_name']
+    ASSETS_DIR = Path(hparams['INPUT_DIR'])
+    MODEL_PATH = ASSETS_DIR / hparams['MODEL_DIR'] / "last.ckpt"
                     
-    PREDICTIONS_DIR = ASSETS_DIR / "predictions/"
-                    
+    PREDICTIONS_DIR = ASSETS_DIR / hparams['OUTPUT_DIR']
+     
     DATA_DIR = ROOT_DIR / "data/"
     DATA_DIR_MODEL_TRAINING = DATA_DIR / "model_training/"
     DATA_DIR_CLOUDLESS = DATA_DIR / 'cloudless/tif/'
@@ -86,7 +104,8 @@ if hparams['local_run']:
     logger.addHandler(fh)
     logger.addHandler(ch)
 
-    
+    Path(PREDICTIONS_DIR).mkdir(parents=True, exist_ok=True)
+  
 else:
     ROOT_DIR = Path("/codeexecution")
     PREDICTIONS_DIR = ROOT_DIR / "predictions"
@@ -101,6 +120,7 @@ else:
     MODEL_PATH = ASSETS_DIR / hparams['model_name']            
 
 logger = logging.getLogger()
+
 def get_metadata(features_dir: os.PathLike, bands: List[str]):
     """
     Given a folder of feature data, return a dataframe where the index is the chip id
@@ -138,7 +158,10 @@ def make_predictions(
         bands (list[str]): list of bands provided for each chip
         predictions_dir (os.PathLike): Destination directory to save the predicted TIF masks
     """
-    predict_dataset = CloudDataset(x_paths=x_paths, bands=bands)
+    predict_dataset = CloudDataset(
+        x_paths=x_paths,
+        bands=bands,
+    )
     predict_dataloader = torch.utils.data.DataLoader(
         predict_dataset,
         batch_size=model.batch_size,
@@ -146,6 +169,7 @@ def make_predictions(
         shuffle=False,
         pin_memory=True,
     )
+    
     for batch_index, batch in enumerate(predict_dataloader):
         print("Running on batch: ", batch_index)
         logger.debug(f"Predicting batch {batch_index} of {len(predict_dataloader)}")
@@ -202,7 +226,10 @@ def main(
     
     # Load with gpu=False, then put on GPU
     hparams['gpu'] = False
-    model = CloudModel(bands=hparams['bands_use'], hparams=hparams)
+    model = CloudModel(
+        bands=hparams['bands_use'],
+        hparams=hparams
+    )
    
     print('Constructed base model')
     # load model from disk
@@ -228,6 +255,7 @@ def main(
     if fast_dev_run:
         metadata = metadata.head()
     logger.info(f"Found {len(metadata)} chips")
+    
     
     print('Loaded metadata')
     # Make predictions and save to disk
