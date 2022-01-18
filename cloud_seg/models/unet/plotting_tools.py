@@ -47,7 +47,35 @@ def true_color_img(img, normalized=True):
     
     return ms.true_color(r=red, g=green, b=blue)
 
-def plot_prediction_grid(x: Tensor, y: Tensor, pred: Tensor, chip_id, num_images_plot: int = 4, fontsize=18):
+def intersection_over_union(pred, true, smooth=1):
+    """
+    Calculates intersection over union for an image.
+
+    Args:
+        pred (torch.Tensor): a tensor of predictions
+        true (torc.Tensor): a tensor of labels
+
+    Returns:
+        intersection (int): total intersection of pixels
+        union (int): total union of pixels
+    """
+    # Intersection and union totals
+    pred_flattened = pred.view(-1)
+    true_flattened = true.view(-1)
+
+    intersection = torch.logical_and(true_flattened, pred_flattened)
+    union = torch.logical_or(true_flattened, pred_flattened)
+    
+    return (torch.sum(intersection).float() + smooth)/ (torch.sum(union).float() + smooth)
+
+def plot_prediction_grid(
+    x: Tensor,
+    y: Tensor,
+    pred: Tensor,
+    chip_id,
+    custom_feature_channels = None,
+    num_images_plot: int = 4,
+    fontsize=18):
 
         batch_size, c, w, h = x.size()
         
@@ -58,9 +86,16 @@ def plot_prediction_grid(x: Tensor, y: Tensor, pred: Tensor, chip_id, num_images
         for img_i in range(nimg_plt):
             
             chip_idi = chip_id[img_i]
-            xi = true_color_img(x[img_i].to("cpu").numpy().astype(np.float32), normalized=True)
+            
+            if custom_feature_channels is None:
+                xi = true_color_img(x[img_i].to("cpu").numpy().astype(np.float32), normalized=True)
+            else:
+                xi = x[img_i][0].to("cpu").numpy().astype(np.float32)
+
             yi = y[img_i].to("cpu")
             predi = pred[img_i].to("cpu")
+            
+            IoU = intersection_over_union(yi, predi)
             
             axarr[img_i, 0].imshow(xi)
             axarr[img_i, 0].set_title(f"{chip_idi}", fontsize=fontsize)
@@ -69,7 +104,7 @@ def plot_prediction_grid(x: Tensor, y: Tensor, pred: Tensor, chip_id, num_images
             axarr[img_i, 1].set_title("True label", fontsize=fontsize)
             
             axarr[img_i, 2].imshow(predi, vmin=0., vmax=1.)
-            axarr[img_i, 2].set_title("Prediction", fontsize=fontsize)
+            axarr[img_i, 2].set_title(f"Pred: IoU={IoU:.3f}", fontsize=fontsize)
             
         plt.close(fig)
         
