@@ -11,7 +11,7 @@ PIX_SAMPLED_PER_IMAGE = 2048
 IMAGE_URL = 'https://portal.nersc.gov/project/cusp/ssl_galaxy_surveys/random/'
 RANDOM_SEED = 0
 
-def create_compiled_dataset(bands):
+def create_compiled_dataset(bands, download=False):
     nfeatures = len(bands)
     nfiles = NCHIPS_TRAIN//100
 
@@ -23,21 +23,25 @@ def create_compiled_dataset(bands):
     for i in range(nfiles):
 
         label_name = f'labels_{i*100:06d}_{(i+1)*100:06d}.npy'
-        download_file(label_name)
+
+        if download:
+            download_file(label_name)
 
         image_names = []
         for band in bands:
             image_name = f'{band}_{i*100:06d}_{(i+1)*100:06d}.npy'
-            download_file(image_name)
+            if download:
+                download_file(image_name)
             image_names += [image_name]
 
         features_tmp, labels_tmp = sample_compiled_images(image_names, label_name, PIX_SAMPLED_PER_IMAGE)
         train_features[i, ...] = features_tmp
         train_labels[i, ...] = labels_tmp
 
-        for image_name in image_names:
-            os.remove(image_name)
-        os.remove(label_name)
+        if download:
+            for image_name in image_names:
+                os.remove(image_name)
+            os.remove(label_name)
 
     train_features = train_features.reshape(-1, nfeatures)
     train_labels = train_labels.reshape(-1)
