@@ -1,5 +1,4 @@
 from .features import sample_compiled_images
-import wget
 import random
 import os
 import numpy as np
