@@ -37,10 +37,7 @@ def load_dataset(name: str, data_dir: os.PathLike, max_images: int=None):
 
     return features, labels, feature_names
 
-def add_spatial_features(features, feature_names):
-    raise NotImplementedError
-
-def add_colour_differences(features, feature_names):
+def add_colour_differences(features: np.ndarray, feature_names: list) -> tuple:
     """Add colours (normalized differences) to features."""
     for i, band1 in enumerate(BANDS[:-1]):
         for band2 in BANDS[i+1:]:
@@ -54,7 +51,7 @@ def add_colour_differences(features, feature_names):
 
     return features, feature_names
 
-def add_colour_ratios(features, feature_names):
+def add_colour_ratios(features: np.ndarray, feature_names: list) -> tuple:
     """Add colours (ratios) to features."""
     for i, band1 in enumerate(BANDS[:-1]):
         for band2 in BANDS[i+1:]:
@@ -66,7 +63,7 @@ def add_colour_ratios(features, feature_names):
 
     return features, feature_names
 
-def add_intensity(features, feature_names):
+def add_intensity(features: np.ndarray, feature_names: list) -> tuple:
     """Add intensity to features."""
     newfeature = np.zeros((features.shape[0]), dtype=features.dtype)
     for band in BANDS:
@@ -80,7 +77,7 @@ def add_intensity(features, feature_names):
 
     return features, feature_names
 
-def add_logintensity(features, feature_names):
+def add_logintensity(features: np.ndarray, feature_names: list) -> tuple:
     """Add intensity to features."""
     newfeature = np.zeros((features.shape[0]), dtype=features.dtype)
     for band in BANDS:
@@ -95,7 +92,7 @@ def add_logintensity(features, feature_names):
 
     return features, feature_names
 
-def add_logbands(features, feature_names):
+def add_logbands(features: np.ndarray, feature_names: list) -> tuple:
     """Add intensity to features."""
     for band in BANDS:
         idx = feature_names.index(band)
@@ -106,21 +103,31 @@ def add_logbands(features, feature_names):
 
     return features, feature_names
 
-def sample_compiled_images(image_path, label_path, npix):
+def sample_compiled_images(image_paths, label_path, npix):
     """Sample `npix` pixels from each image in a compiled dataset."""
     pixels_to_sample = get_pixels_to_sample(npix)
-    images = np.load(image_path)
+    nfeatures = len(image_paths)
+
     labels = np.load(label_path)
-    nimages, nfeatures, npixx, npixy = images.shape
+    
+    images = None
+    for i, image_path in enumerate(image_paths):
+        image = np.load(image_path)
+        if images is None:
+            nimages, npixx, npixy = image.shape
+            images = np.zeros((nimages, npixx, npixy, nfeatures), dtype=image.dtype)
+        images[..., i] = image
+    
     sampled_features = np.zeros((nimages, npix, nfeatures), dtype=images.dtype)
     sampled_labels = np.zeros((nimages, npix), dtype=labels.dtype)
     for i, pixidx in enumerate(pixels_to_sample):
         idxx, idxy = np.unravel_index(pixidx, (NPIX, NPIX))
-        sampled_features[:, i, :] = images[:, :, idxx, idxy]
+        sampled_features[:, i, :] = images[:, idxx, idxy, :]
         sampled_labels[:, i] = labels[:, idxx, idxy]
+
     return sampled_features.reshape(-1, nfeatures), sampled_labels.reshape(-1)
 
-def get_pixels_to_sample(npix_to_sample):
+def get_pixels_to_sample(npix_to_sample: int) -> list:
     pixels_to_sample = []
     npix_sampled = 0
     while npix_sampled < npix_to_sample:
