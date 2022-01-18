@@ -21,6 +21,7 @@ import xrspatial.multispectral as ms
 import math
 import time
 import argparse
+import os 
 
 import multiprocessing
 
@@ -60,7 +61,10 @@ parser.add_argument("--chunksize", type=int, default=1000,
 
 parser.add_argument("--max_pool_size", type=int, default=32,
                     help="Chunksize for output arrays") 
-                          
+
+parser.add_argument("--add_predictions", action='store_true',
+                    help="Add unet predictions") 
+                                               
 parser.add_argument("-v", "--verbose", action="store_true",
                     help="increase output verbosity")
 
@@ -71,31 +75,37 @@ params['outsize'] = [512, 512]
 
 if params['verbose']: print("Parameters are: ", params)
     
-train_meta = pd.read_csv(DATA_DIR / "train_metadata.csv")
+df_meta = pd.read_csv(DATA_DIR / "train_metadata.csv")
 
-# Shuffle chips
-train_meta = train_meta.sample(frac=1, random_state=42).reset_index(drop=True)
-
+# Shuffle 
+# df_meta = df_meta.sample(frac=1, random_state=42).reset_index(drop=True)
+    
 # how many different chip ids, locations, and datetimes are there?
-print(train_meta[["chip_id", "location", "datetime"]].nunique())
+print(df_meta[["chip_id", "location", "datetime"]].nunique())
 
-train_meta.head()
+df_meta.head()
 
-train_meta = utils.add_paths(train_meta, TRAIN_FEATURES, TRAIN_LABELS, bands=params['bands'])
+df_meta = utils.add_paths(df_meta, TRAIN_FEATURES, TRAIN_LABELS, bands=params['bands'])
 
 if params['bands_new'] is not None:
-    # has_B01  = (TRAIN_FEATURES_NEW / train_meta["chip_id"] / f"B01.tif").map(os.path.isfile)
-    # has_B11 = (TRAIN_FEATURES_NEW / train_meta["chip_id"] / f"B11.tif").map(os.path.isfile)
 
-    # print('Fraction of chips that have B01, B11 = ', has_B01.sum()/has_B01.shape[0], has_B11.sum()/has_B11.shape[0])
+    # ensure that data exists for any desired new bands beyond the 4 originally provided
+    for iband, band in enumerate(params['bands_new']):
+        band_has_data = (TRAIN_FEATURES_NEW / df_meta["chip_id"] / f"{band}.tif").map(os.path.isfile)
+        if iband==0: 
+            has_banddata_on_disk = band_has_data
+        else:
+            has_banddata_on_disk = band_has_data & has_banddata_on_disk
 
-    # dm = has_B01 & has_B11
-    # train_meta = train_meta[dm]
+    print('Fraction of chips that have new bands on disk = ', has_banddata_on_disk.sum()/has_banddata_on_disk.shape[0])
 
-    train_meta = utils.add_paths(train_meta, TRAIN_FEATURES_NEW, bands=params['bands_new'])
+    # Keep only files that have new bands on disk
+    df_meta = df_meta[has_banddata_on_disk]
 
+    df_meta = utils.add_paths(df_meta, TRAIN_FEATURES_NEW, bands=params['bands_new'])
+        
 # Total number of chunks. Set as global variable
-params['nchunks'] = math.ceil(len(train_meta)/params['chunksize'])
+params['nchunks'] = math.ceil(len(df_meta)/params['chunksize'])
 params['max_pool_size'] = min(params['nchunks'], params['max_pool_size'])
 
 def intersection_and_union(pred, true):
@@ -154,41 +164,55 @@ def get_chips_in_npy(ichip_start, ichip_end, bands=["B02", "B03", "B04", "B08"])
     nchips = ichip_end-ichip_start
     images = np.zeros((nchips, len(bands), npixx, npixy), dtype=np.uint16)
     labels = np.zeros((nchips, npixx, npixy), dtype=np.uint8)
-    preds = np.zeros((nchips, npixx, npixy), dtype=np.uint8)
     
     labels_mean = np.zeros(nchips, dtype=np.float32)
-    preds_mean  = np.zeros(nchips, dtype=np.float32)
-    intersection = np.zeros(nchips, dtype=np.float32)
-    union = np.zeros(nchips, dtype=np.float32)
+    
+    if params['add_predictions']:
+        preds = np.zeros((nchips, npixx, npixy), dtype=np.uint8)
+        preds_mean  = np.zeros(nchips, dtype=np.float32)
+        intersection = np.zeros(nchips, dtype=np.float32)
+        union = np.zeros(nchips, dtype=np.float32)
 
     chip_ids = []
     for ichip, ichip_meta_loc in enumerate(range(ichip_start, ichip_end)):
 
-        chip = train_meta.iloc[ichip_meta_loc]
+        chip = df_meta.iloc[ichip_meta_loc]
         
         chip_ids.append(chip.chip_id)
         images[ichip] = load_image_to_array(chip.chip_id, bands=bands)  
         labels[ichip] = np.array(Image.open(chip.label_path))
-        preds_i = np.array(Image.open(PREDICTION_DIR/f"{chip.chip_id}.tif"))
-        preds_i = (preds_i > 0.5)*1
-        preds[ichip] = preds_i.astype(np.int8)
-        
-        intersection[ichip], union[ichip] = intersection_and_union(preds[ichip], labels[ichip])
         labels_mean[ichip] = np.mean(labels[ichip])
-        preds_mean[ichip] = np.mean(preds[ichip])
+
+        if params['add_predictions']:
+
+            preds_i = np.array(Image.open(PREDICTION_DIR/f"{chip.chip_id}.tif"))
+            preds_i = (preds_i > 0.5)*1
+            preds[ichip] = preds_i.astype(np.int8)
+
+            intersection[ichip], union[ichip] = intersection_and_union(preds[ichip], labels[ichip])
+            preds_mean[ichip] = np.mean(preds[ichip])
 
     d = {}
+    
+    d['bands_use'] = params['bands_use']
     d['chip_ids'] = chip_ids
     d['images'] = images
     d['labels'] = labels
-    d['preds'] = preds
     d['labels_mean'] = labels_mean
-    d['preds_mean'] = preds_mean
-        
-    d['intersection'] = intersection
-    d['union'] = union
+       
+    # Save bands seperately as well
+    for iband, band in enumerate(params['bands_use']):
+        d[f"{band}"] = images[:, iband]
 
-    d['IoU'] = intersection/union
+    if params['add_predictions']:
+
+        d['preds'] = preds
+        d['preds_mean'] = preds_mean
+
+        d['intersection'] = intersection
+        d['union'] = union
+
+        d['IoU'] = intersection/union
 
     return d
 
@@ -196,13 +220,13 @@ def run_on_chunk(ichunk):
     
     tstart = time.time()
     ichip_start = ichunk*params['chunksize']
-    ichip_end = min(len(train_meta), (ichunk+1)*params['chunksize'])
+    ichip_end = min(len(df_meta), (ichunk+1)*params['chunksize'])
 
     print(f"\nRunning on chunk {ichunk} out of {params['nchunks']}. Index start:{ichip_start}, index end: {ichip_end}")
 
     data = get_chips_in_npy(ichip_start, ichip_end, bands=params['bands_use'])
 
-    print("data, label, prediction shape: ", data['images'].shape, data['labels'].shape, data['preds'].shape)
+    print("data, label shape: ", data['images'].shape, data['labels'].shape)
 
     for k, v in data.items():
         np.save(DATA_DIR_OUT / f"{k}_{ichip_start:06d}_{ichip_end:06d}.npy", v)
@@ -217,15 +241,20 @@ def main():
     In order to facilitate faster data/label/prediction investigation
     """
     
-#     # Simple threading with pool and .map
-    cpus = multiprocessing.cpu_count()
-    pool = multiprocessing.Pool(cpus if cpus < params['max_pool_size'] else params['max_pool_size'])
-    print(f"Number of available cpus = {cpus}")
-    
-    pool.map(run_on_chunk, range(params['nchunks']))
-        
-    # pool.close()
-    # pool.join()
+    if params['max_pool_size'] <= 1:
+        for i in range(1):#params['nchunks']):
+            run_on_chunk(i)
+            
+    else:
+        # Simple threading with pool and .map
+        cpus = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(cpus if cpus < params['max_pool_size'] else params['max_pool_size'])
+        print(f"Number of available cpus = {cpus}")
+
+        pool.map(run_on_chunk, range(params['nchunks']))
+
+        pool.close()
+        pool.join()
     # for ichunk in range(params['nchunks']):
     #      run_on_chunk(ichunk)
         

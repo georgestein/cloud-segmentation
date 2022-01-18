@@ -20,7 +20,11 @@ TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"
 
 TRAIN_LABELS = DATA_DIR / "train_labels"
 
-CHIP_IDS_REMOVE_FILE = DATA_DIR / "BAD_CHIP_DATA/chip_ids_remove_from_train_test.txt"
+BAD_CHIPS_FILE = DATA_DIR / "BAD_CHIP_DATA/BAD_CHIP_LABEL_IDS.txt"
+EASY_CHIPS_FILE = DATA_DIR / "BAD_CHIP_DATA/EASY_CHIPS_IDS.txt"
+
+BAD_CHIP_IDS = list(np.loadtxt(BAD_CHIPS_FILE, dtype=str))
+EASY_CHIP_IDS = list(np.loadtxt(EASY_CHIPS_FILE, dtype=str))
 
 assert TRAIN_FEATURES.exists(), TRAIN_LABELS.exists()
 
@@ -51,8 +55,9 @@ def construct_dataframe(params: dict):
 
         df_meta = utils.add_paths(df_meta, TRAIN_FEATURES_NEW, bands=bands_new)
         
-    CHIP_IDS_REMOVE = list(np.loadtxt(CHIP_IDS_REMOVE_FILE, dtype=str))
-    df_meta = df_meta[~df_meta["chip_id"].isin(CHIP_IDS_REMOVE)]
+    # Remove chips with incorrect labels
+    df_meta = df_meta[~df_meta["chip_id"].isin(BAD_CHIP_IDS)].reset_index(drop=True)
+    
     print(f"\nNumber of chips in dataset is {len(df_meta)}")
     return df_meta
 
@@ -146,7 +151,10 @@ def split_train_val(df, params):
         val = df[val_mask].copy().reset_index(drop=True)
         train = df[~val_mask].copy().reset_index(drop=True)
 
+        # REMOVE EASY CHIPS FROM TRAIN SET            
         print("Train, val, total shape = ", train.shape, val.shape, train.shape[0]+val.shape[0])
+        train = train[~train["chip_id"].isin(EASY_CHIP_IDS)].reset_index(drop=True)
+        print("After easy chip removal: Train, val, total shape = ", train.shape, val.shape, train.shape[0]+val.shape[0])
 
         # separate features from labels
         feature_cols = ["chip_id"] + [f"{band}_path" for band in params['bands_use']]
@@ -185,20 +193,28 @@ def save_train_val_to_disk(train_x, train_y, val_x, val_y, train_x_cloudless, tr
 def main():
     
     parser = argparse.ArgumentParser(description='runtime parameters')
+    
     parser.add_argument("--bands", nargs='+' , default=["B02", "B03", "B04", "B08"],
                         help="bands desired")
+    
     parser.add_argument("--bands_new", nargs='+', default=None,
                         help="additional bands to use beyond original four")
+    
     parser.add_argument("-ncv", "--num_cross_validation_splits", type=int, default=4,
                         help="Number of cross validation splits")    
+    
     parser.add_argument("--seed", type=int , default=13579,
                         help="random seed for train test split")
+    
     parser.add_argument("--construct_cloudless", action="store_true",
                         help="Construct an additional dataframe of cloudless") 
+    
     parser.add_argument("--num_cloudless_chips", type=int, default=-1,
                         help="Number of cloudless samples to include") 
+    
     parser.add_argument("--dont_save_to_disk", action="store_true",
-                        help="save training and validation sets to disk")    
+                        help="save training and validation sets to disk") 
+    
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="increase output verbosity")
    

@@ -218,7 +218,9 @@ def query_bands(
     if want_closest:
         # Filter to the best-matching item
         items = [get_closest_item(search.get_items(), area_of_interest, timestamp)]
-
+        dtime = np.array( [ abs( (item.datetime - timestamp).total_seconds() ) for item in items])
+        properties = [item.properties for item in items]
+        
     else:
         items = get_all_items(search.get_items(), area_of_interest, timestamp)
         print("Found {:d} items matching search parameters".format(len(items)))

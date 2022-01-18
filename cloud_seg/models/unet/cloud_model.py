@@ -11,7 +11,7 @@ import torchmetrics
 
 from .cloud_dataset import CloudDataset
 from .losses import intersection_and_union
-from .losses import dice_loss
+from .losses import dice_loss, power_jaccard
 from .plotting_tools import plot_prediction_grid
 
 
@@ -63,7 +63,9 @@ class CloudModel(pl.LightningModule):
         self.encoder_name = self.hparams.get("encoder_name", "efficientnet-b0")
         self.weights = self.hparams.get("weights", None)
         
-        self.loss_function = self.hparams.get("loss_function", "dice")        
+        self.custom_feature_channels = self.hparams.get("custom_feature_channels", None)
+                                                        
+        self.loss_function = self.hparams.get("loss_function", "BCE")        
         self.optimizer = self.hparams.get("optimizer", "ADAM")
         self.scheduler = self.hparams.get("scheduler", "PLATEAU")
         
@@ -74,7 +76,7 @@ class CloudModel(pl.LightningModule):
       
         self.reduce_learning_rate_factor = self.hparams.get("reduce_learning_rate_factor", 0.1)
 
-        self.patience = self.hparams.get("patience", 5)
+        self.patience = self.hparams.get("patience", 10)
         self.learning_rate_patience = self.hparams.get("learning_rate_patience", 5)
         self.batch_size = self.hparams.get("batch_size", 8)
 
@@ -100,12 +102,14 @@ class CloudModel(pl.LightningModule):
             y_paths=y_train,
             cloudbank=cloudbank,
             transforms=self.train_transform,
+            custom_feature_channels=self.custom_feature_channels,
         )
         self.val_dataset = CloudDataset(
             x_paths=x_val,
             bands=self.bands,
             y_paths=y_val,
             transforms=self.val_transform,
+            custom_feature_channels=self.custom_feature_channels,
         )
         
         # define some performance metrics using torchmetrics
@@ -118,17 +122,13 @@ class CloudModel(pl.LightningModule):
 
     ## Required LightningModule methods ##
     def forward(self, image: torch.Tensor):
-        # Forward pass
-        # output of model is (B, 1, H, W), so remove axis=1
-        if self.loss_function == "BCE":
-            # return raw logits in order to use BCEWithLogitsLoss
-            # which is more stable than BCE:
-            # https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html#torch.nn.BCEWithLogitsLoss
-            return self.model(image).view(-1, 512, 512)
-        
-        else:
-            return torch.sigmoid(self.model(image).view(-1, 512, 512))
-            
+        """
+        Forward pass
+        output of model is (B, 1, H, W), so remove axis=1
+        return raw logits in order to use BCEWithLogitsLoss which is more stable than BCE:
+        https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html#torch.nn.BCEWithLogitsLoss
+        """
+        return self.model(image).view(-1, 512, 512)
 
     def calculate_loss(self, chip, label, preds):
         if self.loss_function.upper()=="BCE":
@@ -136,11 +136,9 @@ class CloudModel(pl.LightningModule):
             
         if self.loss_function.upper()=="DICE":
             loss = dice_loss(preds, label)
-
-            # loss = DiceLoss()(preds, label)
-            # loss = smp.losses.JaccardLoss()(preds, label)
-        #if self.loss_function.upper()=="IOU":
-        #     loss = torchmetrics.IoU(num_classes=2)(preds, label)
+            
+        if self.loss_function.upper()=="JACCARD":
+            loss = power_jaccard(preds, label, power_val=1.)
 
         return loss
 
@@ -171,12 +169,14 @@ class CloudModel(pl.LightningModule):
         # Forward pass
         preds = self.forward(x)
 
-        loss = self.calculate_loss(x, y, preds)
+        if self.loss_function == 'BCE':
+            loss = self.calculate_loss(x, y, preds)
 
-        if self.loss_function == "BCE":
-            preds = torch.sigmoid(preds)
-            
+        preds = torch.sigmoid(preds)
         
+        if self.loss_function != 'BCE':
+            loss = self.calculate_loss(x, y, preds)
+
         preds = (preds > 0.5) * 1  # convert to int
 
         # batch_intersection, batch_union = intersection_and_union(preds, y)
@@ -197,6 +197,9 @@ class CloudModel(pl.LightningModule):
             on_epoch=True,
             prog_bar=self.progress_bar,
         )
+        
+        # keep seperate to use for early stopping
+        self.log("train_iou", self.train_IoU, on_step=True, on_epoch=True, prog_bar=self.progress_bar)
 
         return loss
 
@@ -229,9 +232,7 @@ class CloudModel(pl.LightningModule):
 
         loss = self.calculate_loss(x, y, preds)
 
-        if self.loss_function == "BCE":
-            preds = torch.sigmoid(preds)
-            
+        preds = torch.sigmoid(preds)
         preds = (preds > 0.5) * 1  # convert to int
 
         if self.plot_validation_images:
@@ -271,12 +272,16 @@ class CloudModel(pl.LightningModule):
         if self.plot_validation_images:
             # self.logger[0].experiment.add_figure("chip_label_prediction", 
             self.logger.experiment.add_figure("chip_label_prediction", 
-                                                 plot_prediction_grid(self.last_x,
-                                                                      self.last_y,
-                                                                      self.last_pred,
-                                                                      self.last_chip_id,
-                                                                      num_images_plot=self.num_images_plot),
-                                                 self.current_epoch)
+                                                 plot_prediction_grid(
+                                                     self.last_x,
+                                                     self.last_y,
+                                                     self.last_pred,
+                                                     self.last_chip_id,
+                                                     custom_feature_channels=self.custom_feature_channels,
+                                                     num_images_plot=self.num_images_plot,
+                                                 ),
+                                              self.current_epoch,
+                                             )
 
         # if batch_idx == 0:
             # print(out)

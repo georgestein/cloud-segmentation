@@ -10,6 +10,7 @@ import glob
 from pathlib import Path
 import argparse
 import os
+import datetime
 
 from pytorch_lightning import loggers as pl_loggers
 import albumentations as A
@@ -50,7 +51,8 @@ def main(args):
     train_transforms, train_transforms_names = Augs.add_augmentations()
     train_transforms = A.Compose(train_transforms)
 
-    augs_val = ''
+    augs_val = 'nr' if 'Normalize' in train_transforms_names else ''
+    print("DEBUG", augs_val)
     val_transforms, val_transforms_names = Augs.add_augmentations(augs_val)
     val_transforms = A.Compose(val_transforms)
 
@@ -59,13 +61,21 @@ def main(args):
     
     
     # set up logger and model outputs to have meaningful name
-    augmentations_used_string = '_'.join([name for name in train_transforms_names]) 
 
     dataset_str = 'originaldata'
     if hparams['cloud_augment']:
         dataset_str += '_cloudaugment'
-    
-    hparams['model_training_name'] = f"{len(hparams['bands_use'])}band_{dataset_str}_{hparams['encoder_name']}_{hparams['loss_function']}_{augmentations_used_string}"
+    curent_time = datetime.datetime.now().strftime("%Y-%m-%d")#-%H:%M:%S")
+ 
+    model_out_name = f"{len(hparams['bands_use'])}band"
+    model_out_name += f"_{dataset_str}"  
+    model_out_name += f"_{hparams['encoder_name']}"
+    model_out_name += f"_{hparams['loss_function']}"
+    model_out_name += f"_{hparams['augmentations']}"
+    model_out_name += f"_customfeats_{hparams['custom_feature_channels']}"
+    model_out_name += f"_{curent_time}"
+
+    hparams['model_training_name'] = model_out_name
     if hparams['test_run']:
         model_training_name = 'test'
     
@@ -75,7 +85,6 @@ def main(args):
     Path(hparams['LOG_DIR']).mkdir(parents=True, exist_ok=True)
     Path(hparams['MODEL_DIR']).mkdir(parents=True, exist_ok=True)
     
-
     # Load Data
     val_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_features_meta_cv{hparams['cross_validation_split']}.csv")
     val_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_labels_meta_cv{hparams['cross_validation_split']}.csv")
@@ -136,11 +145,11 @@ def main(args):
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=hparams['MODEL_DIR'],
-        filename='{epoch}-{val_iou_epoch:.2f}',
+        filename='{epoch}-{val_iou_epoch:.4f}',
         monitor="val_iou_epoch",
         mode="max",
         verbose=True,
-        save_last=True
+        save_last=True,
     )
 
     early_stopping_callback = pl.callbacks.early_stopping.EarlyStopping(
@@ -206,7 +215,6 @@ if __name__=='__main__':
                         help="increase output verbosity")
    
 
-
     # Training (gpus, optimization, etc...)
     parser.add_argument("--gpu", action="store_true",
                         help="Use GPU")
@@ -229,35 +237,38 @@ if __name__=='__main__':
     parser.add_argument("--batch_size", type=int, default=8,
                         help="Batch size for model training")
     
-    parser.add_argument("--loss_function", type=str, default='dice',
-                        help="loss_function to use", choices=['bce', 'Dice'])
+    parser.add_argument("--loss_function", type=str, default='bce',
+                        help="loss_function to use", choices=['bce', 'dice', 'jaccard'])
       
     parser.add_argument("--learning_rate", type=float, default=1e-3,
                         help="Learning rate for model optimization")
   
     parser.add_argument("--optimizer", type=str, default='ADAM',
-                        help="Optimizer to use", choices=['ADAM', 'SGD'])
+                        help="Optimizer to use", choices=['ADAM', 'SGD', 'ADAMW'])
     
     parser.add_argument("--scheduler", type=str, default='plateau',
-                        help="Learning rate scheduler to use", choices=['plateau', 'EXPONENTIAL', 'cosine'])
+                        help="Learning rate scheduler to use", choices=['plateau', 'exponential', 'cosine'])
     
-    parser.add_argument("--plot_validation_images", action="store_true",
+    parser.add_argument("--plot_validation_images", action="store_false",
                         help="Plot final batch to tensorboard")
-              
-        
+                      
     # Models and Augmentations
     parser.add_argument("--segmentation_model", type=str, default='unet',
                         help="Encocoder architecture to use", choices=['unet', 'DeepLabV3Plus'])
   
-    parser.add_argument("--encoder_name", type=str, default='efficientnet-b0',
-                        help="Encocoder architecture to use", choices=['efficientnet-b0', 'resnet18', 'resnet34', 'vgg19_bn'])
+    parser.add_argument("--encoder_name", type=str, default='resnet18',
+                        help="Encocoder architecture to use", choices=['efficientnet-b0', 'resnet18', 'resnet34', 'resnet50', 'vgg19_bn'])
   
-    parser.add_argument("--augmentations", type=str, default='vfhfrrnr',
+    parser.add_argument("--augmentations", type=str, default='vfrc',
                         help="training augmentations to use")
     
     parser.add_argument("--cloud_augment", action="store_true",
                         help="Use cloud augmentation")
+    
+    parser.add_argument("--custom_feature_channels", type=str, default=None,
+                        help="Use cloud augmentation", choices=['log_bands', 'ratios'])
 
+    
     args = parser.parse_args()
     
     main(args)

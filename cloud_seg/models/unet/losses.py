@@ -28,8 +28,11 @@ def intersection_and_union(pred, true):
     
     return torch.sum(intersection).float(), torch.sum(union).float()#, torch.sum(intersection) / torch.sum(union)
 
-def dice_loss(pred, true, dice_smooth=1.):
-    
+def dice_loss(pred, true, smooth=1e-6):
+    """
+    pred: prediction logits - so map to probability with sigmoid
+    true: true label
+    """
     pred_flattened = pred.view(-1)
     true_flattened = true.view(-1)
 
@@ -37,6 +40,22 @@ def dice_loss(pred, true, dice_smooth=1.):
     
     return 1 - ((2. * intersection + dice_smooth) /
               (pred_flattened.sum() + true_flattened.sum() + dice_smooth))
+
+def power_jaccard(pred, true, power_val=1, smooth=1.):
+    """
+    pred: prediction logits - so map to probability with sigmoid
+    true: true label
+    """
+    pred_flattened = pred.view(-1)
+    true_flattened = true.view(-1)
+
+    intersection = (pred_flattened * true_flattened).sum()
+                                   
+    total = (pred_flattened**power_val + true_flattened**power_val).sum()                            
+        
+    jacc = (intersection + smooth)/(total - intersection + smooth)
+                
+    return 1 - jacc
 
 class DiceLoss(torch.nn.Module):
     def __init__(self, weight=None, size_average=True):
