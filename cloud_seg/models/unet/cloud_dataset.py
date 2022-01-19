@@ -45,6 +45,7 @@ class CloudDataset(torch.utils.data.Dataset):
             self.len_cloudbank = len(cloudbank)
         
         self.transforms = transforms
+        self.bands = bands
         self.custom_feature_channels = custom_feature_channels
         
         if custom_feature_channels == 'true_color':

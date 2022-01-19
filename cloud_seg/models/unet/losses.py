@@ -42,6 +42,7 @@ def dice_loss(pred, true, smooth=1e-6):
               (pred_flattened.sum() + true_flattened.sum() + dice_smooth))
 
 def power_jaccard(pred, true, power_val=1.75, smooth=1.):
+
     """
     pred: prediction logits - so map to probability with sigmoid
     true: true label
