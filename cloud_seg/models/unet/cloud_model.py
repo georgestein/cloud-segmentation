@@ -327,7 +327,6 @@ class CloudModel(pl.LightningModule):
                 self.model.parameters(),
                 lr=self.learning_rate,
                 weight_decay=0.05,
-
             )
             # sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=10)
 
