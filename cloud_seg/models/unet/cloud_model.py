@@ -3,9 +3,11 @@ from typing import Optional, List
 
 import pandas as pd
 import pytorch_lightning as pl
+import pl_bolts 
 import segmentation_models_pytorch as smp
 import torch
 import torchmetrics
+
 # from pytorch_lightning.utilities import rank_zero_only
 # from pytorch_lightning.loggers.base import rank_zero_experiment
 
@@ -324,6 +326,7 @@ class CloudModel(pl.LightningModule):
             optimizer = torch.optim.AdamW(
                 self.model.parameters(),
                 lr=self.learning_rate,
+                weight_decay=0.05,
             )
             # sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=10)
 
@@ -341,12 +344,19 @@ class CloudModel(pl.LightningModule):
             )
             
         if self.scheduler.upper()=="COSINE":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            #     optimizer,
+            #     T_0=self.T_0,
+            #     eta_min=self.eta_min,
+            # ) 
+
+            scheduler = pl_bolts.optimizers.lr_scheduler.LinearWarmupCosineAnnealingLR(
                 optimizer,
-                T_0=self.T_0,
-                eta_min=self.eta_min,
+                warmup_epochs=10,
+                max_epochs=50,
             ) 
   
+
         if self.scheduler.upper()=="PLATEAU":
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer,

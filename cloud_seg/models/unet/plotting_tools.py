@@ -89,6 +89,9 @@ def plot_prediction_grid(
             
             if custom_feature_channels is None:
                 xi = true_color_img(x[img_i].to("cpu").numpy().astype(np.float32), normalized=True)
+            if custom_feature_channels == "true_color":
+                xi = x[img_i].to("cpu").numpy().astype(np.float32)
+                xi = np.swapaxes(xi, 2, 0).astype(np.uint8)
             else:
                 xi = x[img_i][0].to("cpu").numpy().astype(np.float32)
 

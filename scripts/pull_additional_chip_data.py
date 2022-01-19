@@ -154,11 +154,11 @@ class PystacAsset:
                 Useful for pulling additional band features corresponding to train/test chips
                 """
                 # resize image to 512, 512
-                self.assets[band] = st.resize(
-                    self.assets[band].astype(np.float32),
-                    IMAGE_OUTSIZE,
-                    order=INTERPOLATION_ORDER,
-                )
+                #self.assets[band] = st.resize(
+                #    self.assets[band].astype(np.float32),
+                #    IMAGE_OUTSIZE,
+                #    order=INTERPOLATION_ORDER,
+                #)
                     
                 band_diri = Path(self.DATA_DIR_OUT / f"{self.chip_id}")
                 band_diri.mkdir(parents=True, exist_ok=True)

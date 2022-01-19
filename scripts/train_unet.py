@@ -36,12 +36,20 @@ def main(args):
     if hparams['verbose']: print("Parameters are: ", hparams)
 
     pl.seed_everything(hparams['seed'], workers=True)
+    hparams['precision'] = 32
 
     hparams['bands_use'] = sorted(hparams['bands'] + hparams['bands_new']) if hparams['bands_new'] is not None else hparams['bands']
-    hparams['precision'] = 32
     
     hparams['band_means'] = [band_mean_std[i]['mean'] for i in hparams['bands_use']]
     hparams['band_stds'] = [band_mean_std[i]['std'] for i in hparams['bands_use']]
+    hparams['max_pixel_value'] = 1.0
+    if hparams['custom_feature_channels'] == "true_color":
+        hparams['bands_use'] = ['B04', 'B03', 'B02']
+        hparams['band_means'] = [0.485, 0.456, 0.406] # imagenet for now
+        hparams['band_stds'] = [0.229, 0.224, 0.225]      
+        hparams['max_pixel_value'] = 255
+
+
     hparams['OUTPUT_DIR'] = os.path.join(hparams['OUTPUT_DIR'], hparams['segmentation_model'])
     Path(hparams['OUTPUT_DIR']).mkdir(parents=True, exist_ok=True)
 
@@ -52,7 +60,6 @@ def main(args):
     train_transforms = A.Compose(train_transforms)
 
     augs_val = 'nr' if 'Normalize' in train_transforms_names else ''
-    print("DEBUG", augs_val)
     val_transforms, val_transforms_names = Augs.add_augmentations(augs_val)
     val_transforms = A.Compose(val_transforms)
 
@@ -257,7 +264,7 @@ if __name__=='__main__':
                         help="Encocoder architecture to use", choices=['unet', 'DeepLabV3Plus'])
   
     parser.add_argument("--encoder_name", type=str, default='resnet18',
-                        help="Encocoder architecture to use", choices=['efficientnet-b0', 'resnet18', 'resnet34', 'resnet50', 'vgg19_bn'])
+                        help="Encocoder architecture to use", choices=['efficientnet-b0','efficientnet-b3','efficientnet-b5', 'resnet18', 'resnet34', 'resnet50', 'vgg19_bn'])
   
     parser.add_argument("--augmentations", type=str, default='vfrc',
                         help="training augmentations to use")
@@ -266,7 +273,7 @@ if __name__=='__main__':
                         help="Use cloud augmentation")
     
     parser.add_argument("--custom_feature_channels", type=str, default=None,
-                        help="Use cloud augmentation", choices=['log_bands', 'ratios'])
+                        help="Use cloud augmentation", choices=['true_color', 'log_bands', 'ratios'])
 
     
     args = parser.parse_args()

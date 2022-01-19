@@ -6,6 +6,8 @@ import torch
 from typing import Optional, List
 import torchvision
 
+import cloud_seg.utils.band_normalizations as band_normalizations
+
 class CloudDataset(torch.utils.data.Dataset):
     """Reads in images, transforms pixel values, and serves a
     dictionary containing chip ids, image tensors, and
@@ -43,9 +45,14 @@ class CloudDataset(torch.utils.data.Dataset):
             self.len_cloudbank = len(cloudbank)
         
         self.transforms = transforms
-        self.bands = bands
         self.custom_feature_channels = custom_feature_channels
         
+        if custom_feature_channels == 'true_color':
+            # overwrite input bands to use true color bands
+            self.bands = ['B04', 'B03', 'B02']
+        else:
+            self.bands = bands
+       
     def __len__(self):
         return len(self.data)
 
@@ -88,7 +95,10 @@ class CloudDataset(torch.utils.data.Dataset):
 
         if self.custom_feature_channels is not None:
             # modify x_arr (N,H,W,C) from band data to custom designed features
-            
+            if self.custom_feature_channels == 'true_color':
+                for iband in range(len(self.bands)):
+                    x_arr[..., iband] = band_normalizations.true_color_band(x_arr[..., iband])
+                                
             if self.custom_feature_channels == 'log_bands':
                 # for ichan in range(x_arr.shape[-1]):
                 #     x_arr[..., ichan] = np.log(x_arr

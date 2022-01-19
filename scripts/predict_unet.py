@@ -16,8 +16,11 @@ import logging
 import os
 import argparse
 
+import albumentations as A
+
 from cloud_seg.models.unet.cloud_model import CloudModel
 from cloud_seg.models.unet.cloud_model import CloudDataset
+from cloud_seg.utils.augmentations import CloudAugmentations
 
 
 parser = argparse.ArgumentParser(description='runtime parameters')
@@ -59,12 +62,15 @@ parser.add_argument("--model_name", type=str, default='cloud_model.pt',
 parser.add_argument("--segmentation_model", type=str, default='unet',
                     help="Encocoder architecture to use", choices=['unet', 'DeepLabV3Plus'])
   
-parser.add_argument("--encoder_name", type=str, default='efficientnet-b0',
-                    help="Architecture to use", choices=['efficientnet-b0', 'resnet34'])
+parser.add_argument("--encoder_name", type=str, default='resnet18',
+                    help="Architecture to use", choices=['efficientnet-b0', 'efficientnet-b5', 'resnet18', 'resnet34'])
 
 parser.add_argument("--load_checkpoint", action="store_true",
                     help="Whether loading weights from checkpoint (.ckpt) or just from saved weights state_dict (.pt)")
 
+parser.add_argument("--augmentations", type=str, default='',
+                        help="training augmentations to use")
+    
 hparams = vars(parser.parse_args())
 hparams['weights'] = None
 hparams['bands_use'] = sorted(hparams['bands'] + hparams['bands_new']) if hparams['bands_new'] is not None else hparams['bands']
@@ -158,15 +164,23 @@ def make_predictions(
         bands (list[str]): list of bands provided for each chip
         predictions_dir (os.PathLike): Destination directory to save the predicted TIF masks
     """
+    # Set up transforms using Albumentations library
+    Augs = CloudAugmentations(hparams)
+    predict_transforms, _transforms_names = Augs.add_augmentations()
+    predict_transforms = A.Compose(predict_transforms)
+
     predict_dataset = CloudDataset(
         x_paths=x_paths,
         bands=bands,
+        transforms=predict_transforms,
     )
+    
     predict_dataloader = torch.utils.data.DataLoader(
         predict_dataset,
         batch_size=model.batch_size,
         num_workers=model.num_workers,
         shuffle=False,
+        drop_last=False,
         pin_memory=True,
     )
     
@@ -179,13 +193,16 @@ def make_predictions(
             x = x.cuda(non_blocking=True)
         
         preds = model.forward(x)
+        preds = torch.sigmoid(preds)
+        
         if not hparams['local_run']:
-            preds = (preds > 0.5)
+            preds = (preds > 0.5) * 1
             
         preds = preds.detach()
         
         if model.gpu:
             preds = preds.to("cpu").numpy()
+            
         if not hparams['local_run']:
             preds = preds.astype("uint8")
 

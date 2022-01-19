@@ -34,9 +34,11 @@ DATA_DIR_CLOUDLESS = DATA_DIR / 'cloudless/'
 DATA_DIR_CLOUDLESS_MOST_SIMILAR = DATA_DIR / 'cloudless_most_similar/'
 DATA_DIR_CLOUDLESS_TIF = DATA_DIR / 'cloudless_tif/'
 
-DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
+DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
+# DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
+DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
 
-PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_efficientnet-b0_dice__Normalize_VerticalFlip_HorizontalFlip_RandomRotate90/predictions/"
+PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
 
 TRAIN_FEATURES = DATA_DIR / "train_features"
 TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"
@@ -59,7 +61,7 @@ parser.add_argument("--bands_new", nargs='+', default=None,
 parser.add_argument("--chunksize", type=int, default=1000,
                     help="Chunksize for output arrays") 
 
-parser.add_argument("--max_pool_size", type=int, default=32,
+parser.add_argument("--max_pool_size", type=int, default=64,
                     help="Chunksize for output arrays") 
 
 parser.add_argument("--add_predictions", action='store_true',

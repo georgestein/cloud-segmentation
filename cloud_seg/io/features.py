@@ -106,6 +106,7 @@ def add_logbands(features: np.ndarray, feature_names: list) -> tuple:
 def sample_compiled_images(image_paths, label_path, npix):
     """Sample `npix` pixels from each image in a compiled dataset."""
     pixels_to_sample = get_pixels_to_sample(npix)
+
     nfeatures = len(image_paths)
 
     labels = np.load(label_path)
