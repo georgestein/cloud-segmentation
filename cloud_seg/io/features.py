@@ -3,14 +3,19 @@
 import os
 import numpy as np
 import random
+from pathlib import Path
 
 NPIX = 512
 NFEATURES = 4
-BANDS = ['B02', 'B03', 'B04', 'B08']
-
+IMAGE_BANDS = ['B02', 'B03', 'B04', 'B08']
+ALL_BANDS = ['B02', 'B03', 'B04', 'B08',
+             'B05', 'B06', 'B07','B09',
+             'B8A', 'B11', 'B12', 'B01']
+NBANDS_PER_FILE = 4
 PIX_PER_IMAGE = NPIX*NPIX
+DATA_DIR = Path('./')
 
-def load_dataset(name: str, data_dir: os.PathLike, max_images: int=None):
+def load_dataset(name: str, data_dir: os.PathLike=DATA_DIR, max_images: int=None):
     """Load compiled datasets of images and labels.
 
     Flattens the features to have shape (-1, nfeatures), and
@@ -33,18 +38,18 @@ def load_dataset(name: str, data_dir: os.PathLike, max_images: int=None):
     assert labels.shape[2] == NPIX
     labels = labels.flatten()
 
-    feature_names = BANDS.copy()
+    feature_names = IMAGE_BANDS.copy()
 
     return features, labels, feature_names
 
 def add_intensity(features: np.ndarray, feature_names: list) -> tuple:
     """Add intensity to features."""
     newfeature = np.zeros((features.shape[0]), dtype=features.dtype)
-    for band in BANDS:
+    for band in IMAGE_BANDS:
         idx = feature_names.index(band)
         newfeature += features[..., idx]
 
-    newfeature = newfeature/len(BANDS)
+    newfeature = newfeature/len(IMAGE_BANDS)
 
     features = np.concatenate((features, newfeature[..., np.newaxis]), axis=-1)
     feature_names += ['I']
@@ -54,11 +59,11 @@ def add_intensity(features: np.ndarray, feature_names: list) -> tuple:
 def add_logintensity(features: np.ndarray, feature_names: list) -> tuple:
     """Add intensity to features."""
     newfeature = np.zeros((features.shape[0]), dtype=features.dtype)
-    for band in BANDS:
+    for band in IMAGE_BANDS:
         idx = feature_names.index(band)
         newfeature += features[..., idx]
 
-    newfeature = newfeature/len(BANDS)
+    newfeature = newfeature/len(IMAGE_BANDS)
     newfeature = np.log10(newfeature)
 
     features = np.concatenate((features, newfeature[..., np.newaxis]), axis=-1)
@@ -68,7 +73,7 @@ def add_logintensity(features: np.ndarray, feature_names: list) -> tuple:
 
 def add_logbands(features: np.ndarray, feature_names: list) -> tuple:
     """Add intensity to features."""
-    for band in BANDS:
+    for band in IMAGE_BANDS:
         idx = feature_names.index(band)
         newfeature = np.log10(features[..., idx])
 
@@ -118,9 +123,9 @@ def get_band(band: str, validation: bool=False, name: str=None) -> np.ndarray:
         return get_validation_band(band, name)
 
 def get_train_band(band: str) -> np.ndarray:
-    band_idx = bands.index(band)
-    file_idx = band_idx//nbands_per_file
-    file_bands = bands[file_idx*nbands_per_file:(file_idx+1)*nbands_per_file]
+    band_idx = ALL_BANDS.index(band)
+    file_idx = band_idx//NBANDS_PER_FILE
+    file_bands = ALL_BANDS[file_idx*NBANDS_PER_FILE:(file_idx+1)*NBANDS_PER_FILE]
     
     feature = np.load(DATA_DIR/f"train_features_{'_'.join(file_bands)}_seed0.npy")[:, file_bands.index(band)]
 
