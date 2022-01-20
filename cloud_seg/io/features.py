@@ -184,7 +184,6 @@ class Features():
         self.nfeatures = 0
 
     def add(self, feature: str):
-        print(feature, self.file_name)
         if '-' in feature:
             new_feature = generate_colour_difference(*feature.split('-'), self.validation, self.file_name)
         elif '/' in feature:
