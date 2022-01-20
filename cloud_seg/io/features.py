@@ -184,12 +184,13 @@ class Features():
         self.nfeatures = 0
 
     def add(self, feature: str):
+        print(feature, self.file_name)
         if '-' in feature:
-            new_feature = generate_colour_difference(*feature.split('-'), self.validation)
+            new_feature = generate_colour_difference(*feature.split('-'), self.validation, self.file_name)
         elif '/' in feature:
-            new_feature = generate_colour_ratio(*feature.split('/'), self.validation)
+            new_feature = generate_colour_ratio(*feature.split('/'), self.validation, self.file_name)
         else:
-            new_feature = get_band(feature, self.validation)
+            new_feature = get_band(feature, self.validation, self.file_name)
         
         self.value = np.concatenate(
             (self.value, new_feature[:, np.newaxis]), axis=-1)
