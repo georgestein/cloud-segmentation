@@ -13,7 +13,7 @@ ALL_BANDS = ['B02', 'B03', 'B04', 'B08',
              'B8A', 'B11', 'B12', 'B01']
 NBANDS_PER_FILE = 4
 PIX_PER_IMAGE = NPIX*NPIX
-DATA_DIR = Path('./')
+DATA_DIR = Path('.')
 
 def load_dataset(name: str, data_dir: os.PathLike=DATA_DIR, max_images: int=None):
     """Load compiled datasets of images and labels.
@@ -117,28 +117,28 @@ def get_pixels_to_sample(npix_to_sample: int) -> list:
             npix_sampled += 1
     return pixels_to_sample
 
-def get_band(band: str, validation: bool=False, name: str=None) -> np.ndarray:
+def get_band(band: str, validation: bool=False, name: str=None, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
     if not validation:
-        return get_train_band(band)
+        return get_train_band(band, data_dir=data_dir)
     else:
-        return get_validation_band(band, name)
+        return get_validation_band(band, name, data_dir=data_dir)
 
-def get_train_band(band: str) -> np.ndarray:
+def get_train_band(band: str, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
     band_idx = ALL_BANDS.index(band)
     file_idx = band_idx//NBANDS_PER_FILE
     file_bands = ALL_BANDS[file_idx*NBANDS_PER_FILE:(file_idx+1)*NBANDS_PER_FILE]
     
-    feature = np.load(DATA_DIR/f"train_features_{'_'.join(file_bands)}_seed0.npy")[:, file_bands.index(band)]
+    feature = np.load(data_dir/f"train_features_{'_'.join(file_bands)}_seed0.npy")[:, file_bands.index(band)]
 
     return feature
 
-def get_validation_band(band: str, name: str) -> np.ndarray:
-    feature = np.load(DATA_DIR/f"{band}_{name}.npy").reshape(-1)
+def get_validation_band(band: str, name: str, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
+    feature = np.load(data_dir/f"{band}_{name}.npy").reshape(-1)
     return feature
 
-def generate_colour_difference(band1: str, band2: str, validation: bool=False, name: str=None) -> np.ndarray:
-    feature1 = get_band(band1, validation, name)
-    feature2 = get_band(band2, validation, name)
+def generate_colour_difference(band1: str, band2: str, validation: bool=False, name: str=None, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
+    feature1 = get_band(band1, validation, name, data_dir)
+    feature2 = get_band(band2, validation, name, data_dir)
 
     colour = (feature1-feature2) / (feature1+feature2)
 
@@ -150,9 +150,9 @@ def generate_colour_difference(band1: str, band2: str, validation: bool=False, n
 
     return colour
 
-def generate_colour_ratio(band1: str, band2: str, validation: bool=False, name: str=None) -> np.ndarray:
-    feature1 = get_band(band1, validation, name)
-    feature2 = get_band(band2, validation, name)
+def generate_colour_ratio(band1: str, band2: str, validation: bool=False, name: str=None, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
+    feature1 = get_band(band1, validation, name, data_dir)
+    feature2 = get_band(band2, validation, name, data_dir)
 
     colour = feature1/feature2
 
@@ -169,7 +169,7 @@ def generate_colour_ratio(band1: str, band2: str, validation: bool=False, name: 
     return colour
 
 class Features():
-    def __init__(self, set_type: str='train', file_name: str=None):
+    def __init__(self, set_type: str='train', file_name: str=None, data_dir=DATA_DIR):
         assert set_type in ['train', 'val']
         if set_type == 'train':
             self.npixels = 23756800
@@ -183,14 +183,15 @@ class Features():
         self.validation = set_type == 'val'
         self.file_name = file_name
         self.nfeatures = 0
-
+        self.data_dir = data_dir
+        
     def add(self, feature: str):
         if '-' in feature:
-            new_feature = generate_colour_difference(*feature.split('-'), self.validation, self.file_name)
+            new_feature = generate_colour_difference(*feature.split('-'), self.validation, self.file_name, self.data_dir)
         elif '/' in feature:
-            new_feature = generate_colour_ratio(*feature.split('/'), self.validation, self.file_name)
+            new_feature = generate_colour_ratio(*feature.split('/'), self.validation, self.file_name, self.data_dir)
         else:
-            new_feature = get_band(feature, self.validation, self.file_name)
+            new_feature = get_band(feature, self.validation, self.file_name, self.data_dir)
         
         self.value = np.concatenate(
             (self.value, new_feature[:, np.newaxis]), axis=-1)

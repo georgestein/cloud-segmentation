@@ -12,8 +12,8 @@ BANDS = ['B02', 'B03', 'B04', 'B08']
 
 def plot_validation(
     features: np.ndarray, labels: np.array, predictions: np.array,
-    nplot: int=4) -> plt.figure:
-    """Plot a random selection from the validation set.
+        nplot: int=4, plot_random: bool=False) -> plt.figure:
+    """Plot a random selection (if plot_random=True) from the validation set.
 
     Features and labels can be in (-1, nfeatures) and (-1) shape,
     and will be reshaped before plotting.
@@ -26,8 +26,11 @@ def plot_validation(
     features = features.reshape(-1, NPIX, NPIX, NFEATURES)
     nimages = predictions.shape[0]
 
-    images_to_plot = random.sample(range(nimages), nplot)
-
+    if plot_random:
+        images_to_plot = random.sample(range(nimages), nplot)
+    else:
+        images_to_plot = np.arange(nplot)
+        
     fig, ax = plt.subplots(nplot, 3, figsize=(12, 4*nplot))
     for pidx, imidx in enumerate(images_to_plot):
         full_colour_image = get_full_colour(features[imidx])
