@@ -19,6 +19,7 @@ import xarray
 import xrspatial.multispectral as ms
 import rasterio
 import pyproj
+import rasterio.warp
 
 import math
 import time
@@ -136,29 +137,57 @@ def intersection_and_union(pred, true):
 
     return float(np.sum(intersection)), float(np.sum(union))
 
-def lat_long_bounds(chip_path):
+
+
+
+def lat_lon_bounds(filepath: os.PathLike):
     """Given the path to a GeoTIFF, returns the image bounds in latitude and
     longitude coordinates.
 
     Returns points as a tuple of (left, bottom, right, top)
     """
-
-    with rasterio.open(chip_path) as chip:
-
-        # create a converter starting with the current projection
-        current_crs = pyproj.CRS(chip.meta["crs"])
-        crs_transform = pyproj.Transformer.from_crs(current_crs, current_crs.geodetic_crs)
-
-        # returns left, bottom, right, top
-        left, bottom, right, top = crs_transform.transform_bounds(*chip.bounds)
-        
+    with rasterio.open(filepath) as im:
+        bounds = im.bounds
+        meta = im.meta
+    # create a converter starting with the current projection
+    
+    left, bottom, right, top = rasterio.warp.transform_bounds(
+        meta["crs"],
+        4326,  # code for the lat-lon coordinate system
+        *bounds,
+    )
+    
     lon = (right+left)/2
     dlon = abs(right-left)
     
     lat = (top+bottom)/2
     dlat = abs(top-bottom)
-    
+     
     return lat, lon, dlat, dlon
+
+# def lat_long_bounds(chip_path):
+#     """Given the path to a GeoTIFF, returns the image bounds in latitude and
+#     longitude coordinates.
+
+#     Returns points as a tuple of (left, bottom, right, top)
+#     """
+
+#     with rasterio.open(chip_path) as chip:
+
+#         # create a converter starting with the current projection
+#         current_crs = pyproj.CRS(chip.meta["crs"])
+#         crs_transform = pyproj.Transformer.from_crs(current_crs, current_crs.geodetic_crs)
+
+#         # returns left, bottom, right, top
+#         left, bottom, right, top = crs_transform.transform_bounds(*chip.bounds)
+        
+#     lon = (right+left)/2
+#     dlon = abs(right-left)
+    
+#     lat = (top+bottom)/2
+#     dlat = abs(top-bottom)
+    
+#     return lat, lon, dlat, dlon
 
 def load_image_to_array(chip_id, bands=["B02", "B03", "B04", "B08"],
                data_dir=TRAIN_FEATURES, data_dir_new=TRAIN_FEATURES_NEW):
@@ -215,8 +244,8 @@ def get_chips_in_npy(ichip_start, ichip_end, bands=["B02", "B03", "B04", "B08"])
         
         chip_ids.append(chip.chip_id)
         
-        # get lat long
-        lat, lon, dlat, dlon = lat_long_bounds(chip.B04_path)
+        # get lat lon
+        lat, lon, dlat, dlon = lat_lon_bounds(chip.B04_path)
         chip_lat.append(lat)
         chip_lon.append(lon)
         chip_dlat.append(dlat)
