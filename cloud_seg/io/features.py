@@ -111,11 +111,11 @@ def get_pixels_to_sample(npix_to_sample: int) -> list:
             npix_sampled += 1
     return pixels_to_sample
 
-def get_band(band: str, validation=False) -> np.ndarray:
+def get_band(band: str, validation: bool=False, name: str=None) -> np.ndarray:
     if not validation:
         return get_train_band(band)
     else:
-        return get_validation_band(band)
+        return get_validation_band(band, name)
 
 def get_train_band(band: str) -> np.ndarray:
     band_idx = bands.index(band)
@@ -126,13 +126,13 @@ def get_train_band(band: str) -> np.ndarray:
 
     return feature
 
-def get_validation_band(band: str) -> np.ndarray:
-    feature = np.load(DATA_DIR/f"{band}_011600_011700.npy").reshape(-1)
+def get_validation_band(band: str, name: str) -> np.ndarray:
+    feature = np.load(DATA_DIR/f"{band}_{name}.npy").reshape(-1)
     return feature
 
-def generate_colour_difference(band1: str, band2: str, validation: bool=False) -> np.ndarray:
-    feature1 = get_band(band1, validation)
-    feature2 = get_band(band2, validation)
+def generate_colour_difference(band1: str, band2: str, validation: bool=False, name: str=None) -> np.ndarray:
+    feature1 = get_band(band1, validation, name)
+    feature2 = get_band(band2, validation, name)
 
     colour = (feature1-feature2) / (feature1+feature2)
 
@@ -144,9 +144,9 @@ def generate_colour_difference(band1: str, band2: str, validation: bool=False) -
 
     return colour
 
-def generate_colour_ratio(band1: str, band2: str, validation: bool=False) -> np.ndarray:
-    feature1 = get_band(band1, validation)
-    feature2 = get_band(band2, validation)
+def generate_colour_ratio(band1: str, band2: str, validation: bool=False, name: str=None) -> np.ndarray:
+    feature1 = get_band(band1, validation, name)
+    feature2 = get_band(band2, validation, name)
 
     colour = feature1/feature2
 
@@ -163,16 +163,19 @@ def generate_colour_ratio(band1: str, band2: str, validation: bool=False) -> np.
     return colour
 
 class Features():
-    def __init__(self, set_type: str='train'):
+    def __init__(self, set_type: str='train', file_name: str=None):
         assert set_type in ['train', 'val']
         if set_type == 'train':
             self.npixels = 23756800
         else:
             self.npixels = 26214400
+            assert file_name is not None
+        
         self.value = np.zeros((self.npixels, 0))
         self.names = []
         self.set_type = set_type
         self.validation = set_type == 'val'
+        self.file_name = file_name
         self.nfeatures = 0
 
     def add(self, feature: str):
