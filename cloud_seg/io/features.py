@@ -37,32 +37,6 @@ def load_dataset(name: str, data_dir: os.PathLike, max_images: int=None):
 
     return features, labels, feature_names
 
-def add_colour_differences(features: np.ndarray, feature_names: list) -> tuple:
-    """Add colours (normalized differences) to features."""
-    for i, band1 in enumerate(BANDS[:-1]):
-        for band2 in BANDS[i+1:]:
-            idx1 = feature_names.index(band1)
-            idx2 = feature_names.index(band2)
-            newfeature = (
-                (features[..., idx1]-features[..., idx2]) /
-                (features[..., idx1]+features[..., idx2]))
-            features = np.concatenate((features, newfeature[:, np.newaxis]), axis=-1)
-            feature_names += [f'{band1}-{band2}']
-
-    return features, feature_names
-
-def add_colour_ratios(features: np.ndarray, feature_names: list) -> tuple:
-    """Add colours (ratios) to features."""
-    for i, band1 in enumerate(BANDS[:-1]):
-        for band2 in BANDS[i+1:]:
-            idx1 = feature_names.index(band1)
-            idx2 = feature_names.index(band2)
-            newfeature = (features[..., idx1]/features[..., idx2])
-            features = np.concatenate((features, newfeature[:, np.newaxis]), axis=-1)
-            feature_names += [f'{band1}/{band2}']
-
-    return features, feature_names
-
 def add_intensity(features: np.ndarray, feature_names: list) -> tuple:
     """Add intensity to features."""
     newfeature = np.zeros((features.shape[0]), dtype=features.dtype)
@@ -137,3 +111,86 @@ def get_pixels_to_sample(npix_to_sample: int) -> list:
             pixels_to_sample += [next_pix]
             npix_sampled += 1
     return pixels_to_sample
+
+def get_band(band: str, validation=False) -> np.ndarray:
+    if not validation:
+        return get_train_band(band)
+    else:
+        return get_validation_band(band)
+
+def get_train_band(band: str) -> np.ndarray:
+    band_idx = bands.index(band)
+    file_idx = band_idx//nbands_per_file
+    file_bands = bands[file_idx*nbands_per_file:(file_idx+1)*nbands_per_file]
+    
+    feature = np.load(DATA_DIR/f"train_features_{'_'.join(file_bands)}_seed0.npy")[:, file_bands.index(band)]
+
+    return feature
+
+def get_validation_band(band: str) -> np.ndarray:
+    feature = np.load(DATA_DIR/f"{band}_011600_011700.npy").reshape(-1)
+    return feature
+
+def generate_colour_difference(band1: str, band2: str, validation: bool=False) -> np.ndarray:
+    feature1 = get_band(band1, validation)
+    feature2 = get_band(band2, validation)
+
+    colour = (feature1-feature2) / (feature1+feature2)
+
+    # Protect against nan's
+    colour[colour==np.inf] = 0.
+    colour[colour==-1*np.inf] = 0.
+    colour[colour==np.nan] = 0.
+    colour[colour!=colour] = 0.
+
+    return colour
+
+def generate_colour_ratio(band1: str, band2: str, validation: bool=False) -> np.ndarray:
+    feature1 = get_band(band1, validation)
+    feature2 = get_band(band2, validation)
+
+    colour = feature1/feature2
+
+    colour[np.abs(feature1) < 1e-5] = 0.
+    colour[(np.abs(feature2) < 1e-5) & (feature1 > 0)] = 100
+    colour[(np.abs(feature2) < 1e-5) & (feature1 < 0)] = -100
+
+    # Protect against nan's
+    colour[colour==np.inf] = 0.
+    colour[colour==-1*np.inf] = 0.
+    colour[colour==np.nan] = 0.
+    colour[colour!=colour] = 0.
+
+    return colour
+
+class Features():
+    def __init__(self, set_type: str='train'):
+        assert set_type in ['train', 'val']
+        if set_type == 'train':
+            self.npixels = 23756800
+        else:
+            self.npixels = 26214400
+        self.value = np.zeros((self.npixels, 0))
+        self.names = []
+        self.set_type = set_type
+        self.validation = set_type == 'val'
+        self.nfeatures = 0
+
+    def add(self, feature: str):
+        if '-' in feature:
+            new_feature = generate_colour_difference(*feature.split('-'), self.validation)
+        elif '/' in feature:
+            new_feature = generate_colour_ratio(*feature.split('/'), self.validation)
+        else:
+            new_feature = get_band(feature, self.validation)
+        
+        self.value = np.concatenate(
+            (self.value, new_feature[:, np.newaxis]), axis=-1)
+        self.names += [feature]
+        self.nfeatures += 1
+    
+    def get_value_for(self, feature: str) -> np.ndarray:
+        return self.value[:, self.names.index(feature)]
+
+    def get_values(self) -> np.ndarray:
+        return self.value
