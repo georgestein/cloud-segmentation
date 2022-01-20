@@ -217,7 +217,8 @@ def query_bands(
 
     if want_closest:
         # Filter to the best-matching item
-        items = [get_closest_item(search.get_items(), area_of_interest, timestamp)]
+        items = list(search.get_items())
+        items = [get_closest_item(items, area_of_interest, timestamp)]
         dtime = np.array( [ abs( (item.datetime - timestamp).total_seconds() ) for item in items])
         properties = [item.properties for item in items]
         
@@ -234,21 +235,22 @@ def query_bands(
         dtime = dtime[dtime_sort][:max_item_limit]
         properties = [items[i].properties for i in dtime_sort][:max_item_limit]
         items = [items[i] for i in dtime_sort][:max_item_limit]
-#        print([properties[i]['eo:cloud_cover'] for i in range(len(items))])
-#         print(dtime_sort, items[dtime_sort])
-#         # items = [items[i] for item in items
-            
-#         dtime_max = dtime[np.argsort(dtime)][min(len(dtime)-1, max_item_limit - 1)]
-#         dm = dtime <= dtime_max
+        #        print([properties[i]['eo:cloud_cover'] for i in range(len(items))])
+        #         print(dtime_sort, items[dtime_sort])
+        #         # items = [items[i] for item in items
         
-#         items = [item for i, item in enumerate(items) if dm[i] == True]
-#         dtime = [dtime for i, dtime in enumerate(dtime) if dm[i] == True]
-
-    if items is None:
+        #         dtime_max = dtime[np.argsort(dtime)][min(len(dtime)-1, max_item_limit - 1)]
+        #         dm = dtime <= dtime_max
+        
+        #         items = [item for i, item in enumerate(items) if dm[i] == True]
+        #         dtime = [dtime for i, dtime in enumerate(dtime) if dm[i] == True]
+    if len(items) == 0:
         raise ValueError(
             "Query returned no results. Check that the bounding box is correct "
             "or try increasing the query time range."
         )
+
+        
 
     assets = {}
     for it, item in enumerate(items):
@@ -257,13 +259,18 @@ def query_bands(
         # Load the matching PySTAC asset
         for asset_key in asset_keys:
 
-            asset = np.array(
-                rioxarray.open_rasterio(pc.sign(item.assets[asset_key].href))
-                .rio.clip_box(*bounds)
-                .load()
-                .transpose("y", "x", "band")
-            )
-
+            try:
+                asset = np.array(
+                    rioxarray.open_rasterio(pc.sign(item.assets[asset_key].href))
+                    .rio.clip_box(*bounds)
+                    .load()
+                    .transpose("y", "x", "band")
+                )
+                
+            except:
+                print("No data in bounds for item, asset_key = ", item, asset_key)
+                asset = np.full((512, 512), 0, dtype=np.uint8)
+                    
             # Reshape to singe-band image and resize if needed
             asset = Image.fromarray(asset.squeeze())
             if output_shape:

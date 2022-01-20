@@ -17,6 +17,8 @@ import pytorch_lightning as pl
 
 import xarray
 import xrspatial.multispectral as ms
+import rasterio
+import pyproj
 
 import math
 import time
@@ -35,8 +37,8 @@ DATA_DIR_CLOUDLESS_MOST_SIMILAR = DATA_DIR / 'cloudless_most_similar/'
 DATA_DIR_CLOUDLESS_TIF = DATA_DIR / 'cloudless_tif/'
 
 DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
-# DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
-DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
+DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
+# DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
 
 PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
 
@@ -98,7 +100,9 @@ if params['bands_new'] is not None:
             has_banddata_on_disk = band_has_data
         else:
             has_banddata_on_disk = band_has_data & has_banddata_on_disk
-
+        
+        if np.sum(band_has_data) == 0:
+            print(f"Band {band} has no data")
     print('Fraction of chips that have new bands on disk = ', has_banddata_on_disk.sum()/has_banddata_on_disk.shape[0])
 
     # Keep only files that have new bands on disk
@@ -131,6 +135,30 @@ def intersection_and_union(pred, true):
     union = np.logical_or(true_flattened, pred_flattened)/pred_flattened.shape[0]
 
     return float(np.sum(intersection)), float(np.sum(union))
+
+def lat_long_bounds(chip_path):
+    """Given the path to a GeoTIFF, returns the image bounds in latitude and
+    longitude coordinates.
+
+    Returns points as a tuple of (left, bottom, right, top)
+    """
+
+    with rasterio.open(chip_path) as chip:
+
+        # create a converter starting with the current projection
+        current_crs = pyproj.CRS(chip.meta["crs"])
+        crs_transform = pyproj.Transformer.from_crs(current_crs, current_crs.geodetic_crs)
+
+        # returns left, bottom, right, top
+        left, bottom, right, top = crs_transform.transform_bounds(*chip.bounds)
+        
+    lon = (right+left)/2
+    dlon = abs(right-left)
+    
+    lat = (top+bottom)/2
+    dlat = abs(top-bottom)
+    
+    return lat, lon, dlat, dlon
 
 def load_image_to_array(chip_id, bands=["B02", "B03", "B04", "B08"],
                data_dir=TRAIN_FEATURES, data_dir_new=TRAIN_FEATURES_NEW):
@@ -175,12 +203,25 @@ def get_chips_in_npy(ichip_start, ichip_end, bands=["B02", "B03", "B04", "B08"])
         intersection = np.zeros(nchips, dtype=np.float32)
         union = np.zeros(nchips, dtype=np.float32)
 
-    chip_ids = []
+    chip_ids    = []
+    chip_lat   = []
+    chip_lon = []
+    chip_dlat  = []
+    chip_dlon    = []
+    
     for ichip, ichip_meta_loc in enumerate(range(ichip_start, ichip_end)):
 
         chip = df_meta.iloc[ichip_meta_loc]
         
         chip_ids.append(chip.chip_id)
+        
+        # get lat long
+        lat, lon, dlat, dlon = lat_long_bounds(chip.B04_path)
+        chip_lat.append(lat)
+        chip_lon.append(lon)
+        chip_dlat.append(dlat)
+        chip_dlon.append(dlon)
+        
         images[ichip] = load_image_to_array(chip.chip_id, bands=bands)  
         labels[ichip] = np.array(Image.open(chip.label_path))
         labels_mean[ichip] = np.mean(labels[ichip])
@@ -198,6 +239,11 @@ def get_chips_in_npy(ichip_start, ichip_end, bands=["B02", "B03", "B04", "B08"])
     
     d['bands_use'] = params['bands_use']
     d['chip_ids'] = chip_ids
+    d['lat'] =  chip_lat 
+    d['lon'] =  chip_lon
+    d['dlat'] = chip_dlat 
+    d['dlon'] = chip_dlon
+
     d['images'] = images
     d['labels'] = labels
     d['labels_mean'] = labels_mean
