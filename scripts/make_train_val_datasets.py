@@ -53,11 +53,12 @@ def construct_dataframe(params: dict):
 
         df_meta = df_meta[has_banddata_on_disk]
 
-        df_meta = utils.add_paths(df_meta, TRAIN_FEATURES_NEW, bands=bands_new)
+        df_meta = utils.add_paths(df_meta, TRAIN_FEATURES_NEW, bands=params['bands_new'])
         
     # Remove chips with incorrect labels
     df_meta = df_meta[~df_meta["chip_id"].isin(BAD_CHIP_IDS)].reset_index(drop=True)
-    
+    print(f"\nREMOVING {len(BAD_CHIP_IDS)} BAD LABELS")
+
     print(f"\nNumber of chips in dataset is {len(df_meta)}")
     return df_meta
 
@@ -200,7 +201,7 @@ def main():
     parser.add_argument("--bands_new", nargs='+', default=None,
                         help="additional bands to use beyond original four")
     
-    parser.add_argument("-ncv", "--num_cross_validation_splits", type=int, default=4,
+    parser.add_argument("-ncv", "--num_cross_validation_splits", type=int, default=5,
                         help="Number of cross validation splits")    
     
     parser.add_argument("--seed", type=int , default=13579,

@@ -41,7 +41,9 @@ DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
 DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
 # DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
 
-PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
+#PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
+
+PREDICTION_DIR = Path.cwd().parent.resolve() / "../trained_models/unet/5band_originaldata_efficientnet-b3_jaccard_vfhfrrtrrc_customfeats_None_2022-01-20/predictions/"
 
 TRAIN_FEATURES = DATA_DIR / "train_features"
 TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"

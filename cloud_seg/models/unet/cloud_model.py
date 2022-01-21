@@ -64,7 +64,7 @@ class CloudModel(pl.LightningModule):
         self.segmentation_model = self.hparams.get("segmentation_model", "unet")
         self.encoder_name = self.hparams.get("encoder_name", "efficientnet-b0")
         self.weights = self.hparams.get("weights", None)
-        
+        self.decoder_attention_type = self.hparams.get("decoder_attention_type", None)
         self.custom_feature_channels = self.hparams.get("custom_feature_channels", None)
                                                         
         self.loss_function = self.hparams.get("loss_function", "BCE")        
@@ -384,6 +384,7 @@ class CloudModel(pl.LightningModule):
                 encoder_weights=self.weights,
                 in_channels=self.num_channels,
                 classes=1,
+                decoder_attention_type=self.decoder_attention_type,
             )
             if self.gpu:
                 unet_model.cuda()

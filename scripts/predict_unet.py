@@ -56,14 +56,14 @@ parser.add_argument("-v", "--verbose", action="store_true",
 parser.add_argument("--local_run", action="store_true",
                     help="Whether running locally or on planetary computer")
                     
-parser.add_argument("--model_name", type=str, default='cloud_model.pt',
+parser.add_argument("--model_name", type=str, default='last.ckpt',
                     help="directory to save trained model")
 
 parser.add_argument("--segmentation_model", type=str, default='unet',
                     help="Encocoder architecture to use", choices=['unet', 'DeepLabV3Plus'])
   
 parser.add_argument("--encoder_name", type=str, default='resnet18',
-                    help="Architecture to use", choices=['efficientnet-b0', 'efficientnet-b5', 'resnet18', 'resnet34'])
+                    help="Architecture to use", choices=['efficientnet-b0', 'efficientnet-b3', 'efficientnet-b5', 'resnet18', 'resnet34'])
 
 parser.add_argument("--load_checkpoint", action="store_true",
                     help="Whether loading weights from checkpoint (.ckpt) or just from saved weights state_dict (.pt)")
@@ -87,7 +87,7 @@ if hparams['local_run']:
     
     ROOT_DIR = Path.cwd().parent.resolve()
     ASSETS_DIR = Path(hparams['INPUT_DIR'])
-    MODEL_PATH = ASSETS_DIR / hparams['MODEL_DIR'] / "last.ckpt"
+    MODEL_PATH = ASSETS_DIR / hparams['MODEL_DIR'] / hparams['model_name']
                     
     PREDICTIONS_DIR = ASSETS_DIR / hparams['OUTPUT_DIR']
      
@@ -127,7 +127,7 @@ else:
 
 logger = logging.getLogger()
 
-def get_metadata(features_dir: os.PathLike, bands: List[str]):
+def get_metadata(bands: List[str]):
     """
     Given a folder of feature data, return a dataframe where the index is the chip id
     and there is a column for the path to each band's TIF image.
@@ -139,11 +139,12 @@ def get_metadata(features_dir: os.PathLike, bands: List[str]):
     """
     chip_metadata = pd.DataFrame(index=[f"{band}_path" for band in bands])
     chip_ids = (
-        pth.name for pth in features_dir.iterdir() if not pth.name.startswith(".")
+        pth.name for pth in INPUT_IMAGES_DIR.iterdir() if not pth.name.startswith(".")
     )
 
     for chip_id in sorted(chip_ids):
-        chip_bands = [features_dir / chip_id / f"{band}.tif" for band in bands]
+        # chip_bands = [INPUT_IMAGES_DIR / chip_id / f"{band}.tif" for band in bands]
+        chip_bands = [INPUT_IMAGES_DIR / chip_id / f"{band}.tif" if band not in hparams['bands_new'] else INPUT_IMAGES_DIR_NEW / chip_id / f"{band}.tif" for band in bands] 
         chip_metadata[chip_id] = chip_bands
 
     return chip_metadata.transpose().reset_index().rename(columns={"index": "chip_id"})
@@ -268,7 +269,8 @@ def main(
              
     # Load metadata
     logger.info("Loading metadata")
-    metadata = get_metadata(INPUT_IMAGES_DIR, bands=bands)
+    metadata = get_metadata(bands=hparams['bands_use'])
+    print(metadata.head())
     if fast_dev_run:
         metadata = metadata.head()
     logger.info(f"Found {len(metadata)} chips")
@@ -277,7 +279,7 @@ def main(
     print('Loaded metadata')
     # Make predictions and save to disk
     logger.info("Generating predictions in batches")
-    make_predictions(model, metadata, bands, PREDICTIONS_DIR)
+    make_predictions(model, metadata, hparams['bands_use'], PREDICTIONS_DIR)
 
     logger.info(f"""Saved {len(list(PREDICTIONS_DIR.glob("*.tif")))} predictions""")
 

@@ -30,6 +30,11 @@ TRAIN_LABELS = DATA_DIR / "train_labels"
 
 band_mean_std = np.load(DATA_DIR / 'measured_band_stats.npy', allow_pickle=True).item()
 
+def none_or_str(value):
+    if value == 'None':
+        return None
+    return value
+
 def main(args):
     
     hparams = vars(args)
@@ -37,17 +42,16 @@ def main(args):
 
     pl.seed_everything(hparams['seed'], workers=True)
     hparams['precision'] = 32
-
     hparams['bands_use'] = sorted(hparams['bands'] + hparams['bands_new']) if hparams['bands_new'] is not None else hparams['bands']
     
-    hparams['band_means'] = [band_mean_std[i]['mean'] for i in hparams['bands_use']]
-    hparams['band_stds'] = [band_mean_std[i]['std'] for i in hparams['bands_use']]
-    hparams['max_pixel_value'] = 1.0
-    if hparams['custom_feature_channels'] == "true_color":
-        hparams['bands_use'] = ['B04', 'B03', 'B02']
-        hparams['band_means'] = [0.485, 0.456, 0.406] # imagenet for now
-        hparams['band_stds'] = [0.229, 0.224, 0.225]      
-        hparams['max_pixel_value'] = 255
+    # hparams['band_means'] = [band_mean_std[i]['mean'] for i in hparams['bands_use']]
+    # hparams['band_stds'] = [band_mean_std[i]['std'] for i in hparams['bands_use']]
+    # hparams['max_pixel_value'] = 1.0
+    # if hparams['custom_feature_channels'] == "true_color":
+    #     hparams['bands_use'] = ['B04', 'B03', 'B02']
+    #     hparams['band_means'] = [0.485, 0.456, 0.406] # imagenet for now
+    #     hparams['band_stds'] = [0.229, 0.224, 0.225]      
+    #     hparams['max_pixel_value'] = 255
 
 
     hparams['OUTPUT_DIR'] = os.path.join(hparams['OUTPUT_DIR'], hparams['segmentation_model'])
@@ -247,7 +251,7 @@ if __name__=='__main__':
     parser.add_argument("--loss_function", type=str, default='bce',
                         help="loss_function to use", choices=['bce', 'dice', 'jaccard'])
       
-    parser.add_argument("--learning_rate", type=float, default=1e-3,
+    parser.add_argument("-lr", "--learning_rate", type=float, default=1e-3,
                         help="Learning rate for model optimization")
   
     parser.add_argument("--optimizer", type=str, default='ADAM',
@@ -268,7 +272,12 @@ if __name__=='__main__':
                                                                        'resnet18', 'resnet34', 'resnet50',
                                                                        'vgg19_bn',
                                                                       'tu-efficientnetv2_m'])
-  
+    parser.add_argument("--weights", type=none_or_str, default=None,
+                        help="Pretrained_weights architecture to use")
+    
+    parser.add_argument("--decoder_attention_type", type=none_or_str, default=None,
+                        help="Attention in decoder")
+    
     parser.add_argument("--augmentations", type=str, default='vfrc',
                         help="training augmentations to use")
     

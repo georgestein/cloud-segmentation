@@ -341,7 +341,7 @@ def main():
     parser.add_argument("--remake_all", action="store_true",
                         help="Remake all images, and overwrite current ones on disk") 
     
-    parser.add_argument("--interpolation_order", type=int, default=1,
+    parser.add_argument("--interpolation_order", type=int, default=0,
                         help="interpolation order for resizing images") 
              
     parser.add_argument("--seed", type=int , default=13579,
