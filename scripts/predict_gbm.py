@@ -48,7 +48,7 @@ def load_data_parameters(args):
         prediction_dir = Path('./feature_predictions/')
     else:
         data_dir = Path(args.data_dir)
-        prediction_dir = Path(prediction_dir)
+        prediction_dir = Path(args.prediction_dir)
 
     return data_dir, prediction_dir
 
