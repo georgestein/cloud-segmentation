@@ -1,3 +1,4 @@
+import re
 import shutil
 import numpy as np
 from pathlib import Path
@@ -24,9 +25,14 @@ def load_model_parameters():
     model_path = model_dir/model_name
     return model_path, model_name, feature_list
 
+def get_image_id(image: str):
+    return re.findall(
+        '\d\d\d\d\d\d_\d\d\d\d\d\d',
+        image)[-1]
+
 def input_image_ids(data_dir, name):
-    images = sorted(data_dir.glob('{name}_*.npy'))
-    image_ids = ['_'.join(str(image).split('/')[-1].split('.')[-1].split('_')[1:3]) for image in images]
+    images = sorted(data_dir.glob(f'{name}_*.npy'))
+    image_ids = [get_image_id(str(image)) for image in images]
     return image_ids
 
 def feature_classification():
@@ -42,6 +48,7 @@ def feature_classification():
     clf = load(model_path)
 
     for image_id in tqdm.tqdm(image_ids):
+        print(image_id)
         image_features = Features(set_type='val', file_name=image_id)
         for feature in feature_list:
             image_features.add(feature)
