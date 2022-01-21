@@ -78,7 +78,7 @@ def parse_commandline_arguments() -> "argparse.Namespace":
         help='path to the directory containing the band data',
         default='./')
     parser.add_argument(
-        '--predict_dir',
+        '--prediction_dir',
         type=str,
         help='path to the directory to which predictions are written',
         default='./feature_predictions')
