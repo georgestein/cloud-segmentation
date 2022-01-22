@@ -10,7 +10,8 @@ NFEATURES = 4
 IMAGE_BANDS = ['B02', 'B03', 'B04', 'B08']
 ALL_BANDS = ['B02', 'B03', 'B04', 'B08',
              'B05', 'B06', 'B07','B09',
-             'B8A', 'B11', 'B12', 'B01']
+             'B8A', 'B11', 'B12', 'B01',
+             'SCL', 'AOT', 'LC']
 NBANDS_PER_FILE = 4
 PIX_PER_IMAGE = NPIX*NPIX
 DATA_DIR = Path('.')
