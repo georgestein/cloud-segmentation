@@ -29,8 +29,6 @@ label_str = 'train'
 
 # locations to various directories
 DATA_DIR = Path.cwd().parent.resolve() / "data/"
-# DATA_DIR_OUT = DATA_DIR / "cloudless/"
-DATA_DIR_OUT = DATA_DIR / "train_features_new/"
 
 FEATURES = DATA_DIR / "{:s}_features".format(label_str)
 LABELS   = DATA_DIR / "{:s}_labels".format(label_str)
@@ -71,14 +69,18 @@ parser.add_argument("--want_closest", action="store_true",
                     help="If true return only return closest chip to query (possibly query chip itself). \
                     Else return closest non-matching chips")
 
-parser.add_argument("--max_cloud_cover", type=float, default=5.0,
+parser.add_argument("--max_cloud_cover", type=float, default=1.0,
                     help="only return chips with below this cloud cover")
 
-parser.add_argument("--max_cloud_shadow_cover", type=float, default=5.0,
+parser.add_argument("--max_cloud_shadow_cover", type=float, default=1.0,
                     help="only return chips with below this cloud shadow cover")
 
 parser.add_argument("--max_item_limit", type=int, default=5,
                     help="Maximum number of nearest items to return")
+
+parser.add_argument("--remake_all", action="store_true",
+                    help="Remake all images, and overwrite current ones on disk") 
+    
 #     parser.add_argument("", type=int, default=,
 #                         help="")
 
@@ -87,11 +89,16 @@ if params['new_band_dirs'] == []:
     # no specific output directories specified, default to band names
     params['new_band_dirs'] = params['new_bands']
 
+if params['want_closest']:
+    DATA_DIR_OUT = DATA_DIR / "train_features_new/"
+else:
+    DATA_DIR_OUT = DATA_DIR / "cloudless/"
+
 params['DATA_DIR_OUT'] = DATA_DIR_OUT
 print(params)
 
 class PystacAsset:
-    def __init__(self, df_chip, parameters: dict):
+    def __init__(self, df_chip, params: dict):
 
         self.df_chip = df_chip
         self.chip_id = df_chip.chip_id
@@ -102,14 +109,15 @@ class PystacAsset:
         self.new_bands = params.get("new_bands", ["B02", "B03", "B04", "B08"])
         self.new_band_dirs = params.get("new_band_dirs", ["B02", "B03", "B04", "B08"])
         self.DATA_DIR_OUT = params.get("DATA_DIR_OUT", "data/cloudless_test")
-           
+        self.remake_all = params.get("remake_all", False)
+        
         self.query_range_minutes = params.get("query_range_minutes", 60 * 24 * 365 * 5)
         self.want_closest = params.get("want_closest", False)
-        self.max_cloud_cover = params.get("max_cloud_cover", 5.0)
-        self.max_cloud_shadow_cover = params.get("max_cloud_shadow_cover", 5.0)
+        self.max_cloud_cover = params.get("max_cloud_cover", 1.0)
+        self.max_cloud_shadow_cover = params.get("max_cloud_shadow_cover", 1.0)
         self.max_item_limit = params.get("max_item_limit", 5)
 
-        self.file_extension = '.npy'
+        self.file_extension = '.npz'
         if self.want_closest:
             self.file_extension = '.tif'
             
@@ -119,29 +127,36 @@ class PystacAsset:
         
     def check_if_bands_on_disk(self):
         """check if all desired new data already exists for this chip"""
-        exists_on_disk = True
-        for band, band_dir in zip(self.new_bands, self.new_band_dirs):
-            current_band_dir = os.path.join(self.DATA_DIR_OUT, f"{self.chip_id}")
+        exists_on_disk=False
+        if not self.remake_all:
+            exists_on_disk = True
+            for band, band_dir in zip(self.new_bands, self.new_band_dirs):
+                current_band_dir = os.path.join(self.DATA_DIR_OUT, f"{self.chip_id}")
 
-            if not os.path.isfile(os.path.join(current_band_dir, f"{band_dir}{self.file_extension}")):
-                exists_on_disk = False
+                if not os.path.isfile(os.path.join(current_band_dir, f"{band_dir}{self.file_extension}")):
+                    exists_on_disk = False
 
         return exists_on_disk
 
-    def resize_images(self, images, interpolation_order=INTERPOLATION_ORDER):
+    def resize_images(self, images):
         """resize all images to size of first in list"""
         image_shapes = np.unique([i.shape for i in images])
         image_shape_nearest = images[0].shape
         image_dtype = images[0].dtype
 
-        if len(image_shapes) > 1:
-            for i in range(1, len(images)):
+        if images.ndim < 3:
+            # only a single image was saved to .npz file
+            single_image = True
+            images = images[None, ...]
+
+        for i in range(0, len(images)):
+            if images[i].shape != IMAGE_OUTSIZE:
                 images[i] = st.resize(
                     images[i].astype(np.float32),
-                    image_shape_nearest,
-                    order=interpolation_order,
+                    IMAGE_OUTSIZE,
+                    order=INTERPOLATION_ORDER,
                 )
-                images[i] = images[i].astype(image_dtype)
+            images[i] = images[i].astype(image_dtype)
 
         return images
                 
@@ -180,17 +195,19 @@ class PystacAsset:
                 """
                 band_diri = Path(self.DATA_DIR_OUT / f"{self.chip_id}")
                 Path(band_diri).mkdir(parents=True, exist_ok=True)
-
-                self.assets[band] = self.resize_images(self.assets[band])
                 
-                print(band_diri / f"{band_dir}.npz")
-                np.savez(
-                    band_diri / f"{band_dir}.npz",
-                    images=np.stack(self.assets[band], axis=0),
-                    times=self.assets[band + "_time"],
-                    dtimes=self.assets[band + "_dtime"],
-                    properties=self.assets[band + "_properties"],
-                )
+                try:
+                    self.assets[band] = self.resize_images(self.assets[band])
+
+                    np.savez(
+                        band_diri / f"{band_dir}.npz",
+                        images=np.stack(self.assets[band], axis=0),
+                        times=self.assets[band + "_time"],
+                        dtimes=self.assets[band + "_dtime"],
+                        properties=self.assets[band + "_properties"],
+                    )
+                except:
+                    print(f"{band_diri} has no chips")
                 
     def get_assets_from_chip(self):
 

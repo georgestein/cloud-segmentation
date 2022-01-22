@@ -20,6 +20,8 @@ import os
 
 from cloud_seg.utils import utils
 from cloud_seg.io import io
+from cloud_seg.models.cloudmix import cloud_mlp
+from cloud_seg.models.cloudmix import cloud_match
 
 DATA_DIR = Path.cwd().parent.resolve() / "data/"
 DATA_DIR_CLOUDS = DATA_DIR / 'clouds/'
@@ -42,6 +44,8 @@ def construct_cloudbank_dataframe(df_val, params: dict):
     """Construct cloudbank using all chips that do not overlap with validation set"""
     cloud_chips = sorted(glob.glob(str(DATA_DIR_CLOUDS) + '/*'))
     
+    # Check that files exist in directory
+    cloud_chips = [i for i in cloud_chips if os.path.isfile(os.path.join(i,'B04.tif'))] 
     print(f"\nTotal number of cloud chips is {len(cloud_chips)}")
     
     # remove cloud chips that are from validation sample
@@ -103,11 +107,11 @@ def load_npz_arrays_for_chip(params, chip_id):
             images_in = images_in[None, ...]
 
             
-        images_out = np.zeros( (images_in.shape[0], params['outsize'][0], params['outsize'][1]), dtype=np.float32)
-        for i in range(images_in.shape[0]):
-            images_out[i] = utils.resize_image(images_in[i], params['outsize'], interpolation_order=params['interpolation_order']) 
+        # images_out = np.zeros( (images_in.shape[0], params['outsize'][0], params['outsize'][1]), dtype=np.float32)
+        # for i in range(images_in.shape[0]):
+        #     images_out[i] = utils.resize_image(images_in[i], params['outsize'], interpolation_order=params['interpolation_order']) 
 
-        images_cloudless_all[band] = images_out
+        images_cloudless_all[band] = images_in
         if single_image:
             images_cloudless_all[band+"_time"] = [d_["times"]]
             images_cloudless_all[band+"_dtime"] = [d_["dtimes"]]
@@ -118,7 +122,7 @@ def load_npz_arrays_for_chip(params, chip_id):
             images_cloudless_all[band+"_dtime"] = d_["dtimes"]
             images_cloudless_all[band+"_properties"] = d_["properties"]
 
-        images_cloudless_all[band+"_nimg"] = images_out.shape[0]
+        images_cloudless_all[band+"_nimg"] = images_in.shape[0]
         
     nimages = images_cloudless_all["B02_nimg"]
     images_matching = np.full(nimages, True, dtype=bool)
@@ -173,84 +177,6 @@ def save_npz_chip_arrays_to_tif(params: dict):
                 band_image = Image.fromarray(images_cloudless_all[band][iimg])        
                 band_image.save(band_loc)   
 
-def find_and_return_most_similar_image(params, image, label, images_cloudless, brightness_correct_image_cloudless=False):
-    """Given a cloudy chip and a number of cloudless versions of the same area, choose or create 
-    the most similar one to the cloudy chip.
-    
-    The simple approximation is to just calculate which set of images best matches in regions where labels==0. 
-    This does not accound for shadows.
-    """
-    
-     # determine which new cloudless image is most similar to the old
-     # by calculating agreement in non-cloudy regions
-    diffs = np.zeros( (len(params['bands_use']), images_cloudless['B02'].shape[0]) )
-    for i, band in enumerate(params['bands_use']):
-
-        diff = (image[band]-images_cloudless[band]) * label
-        diffs[i] = np.sum(diff, axis=(1,2))
-
-        if diffs[i].max() > 0.:
-            # if totally cloud covered label==0 everywhere, and max will be 0.
-            diffs[i] /= diffs[i].max()
-
-    total_diffs = np.mean(diffs, axis=0)
-
-    ind_min_band_diff = np.argmin(total_diffs)  
-    
-    image_cloudless = {}
-    for band in params['bands_use']:
-        image_cloudless[band] = images_cloudless[band][ind_min_band_diff]
-    
-        if brightness_correct_image_cloudless:
-            # try to match the average intensity in non cloudy regions
-            dm = label == 1
-
-            if np.sum(dm) > 0:
-                mean_diff = np.median(image[band][dm] - image_cloudless[band][dm])
-            else:
-                mean_diff = 1.
-
-            # print('mean_diff', mean_diff)
-            images_cloudless[band] += mean_diff
-
-    return image_cloudless
-
-def extract_clouds(params, image, label, images_cloudless, cloud_extract_model='additive'):
-    """Given cloudy image/label pair, and 'cloudless' images of the same area pulled from the planetary computer,
-    extract brightness changes due to clouds.
-    
-    The simplest model is to assume clouds simply add brightness to each pixel that they cover. 
-    If true, assuming that the land does not change between when the cloudy and cloudless images were taken,
-    clouds = (images - images_cloudless)*labels.
-    
-    Unfortunately, both of these assumptions are incorrect
-    
-    1.) The cloudy and cloudless images are of the same location, but are often seperated by months or years.
-        Over this timeframe plants change color, water levels change, and human infractstructure near cities changes.
-        Additionally, the images might not be taken from the same angle, causing mis-alignments between each image set.
-        
-    2.) Clouds are sometimes transparent, sometimes not. An additive model does not correcely account for this
-    
-    3.) Cloud shadows... We know what angle the sun makes for each chip (in chip properties) can we come up with a way to project these?
-    
-    """
-    cloud_extract_models = ['additive'] # Add transparency later
-    
-    if cloud_extract_model not in cloud_extract_models:
-        print(f"WARNING: cloud model {cloud_extract_model} is not a possible value to use. Using {cloud_extract_models[0]} instead \
-            Possible choices are:", cloud_extract_models)
-        
-    image_cloudless = find_and_return_most_similar_image(params, image, label, images_cloudless)   
-    
-    # and save to disk as .tif
-    clouds = {}
-    for band in params['bands_use']:
-
-        if cloud_extract_model=='additive':
-            clouds[band] = (image[band] - image_cloudless[band]) 
-
-    return image_cloudless, clouds
-
 def make_clouds(params, cloudless_dir):
     
     chip_id = os.path.basename(cloudless_dir)
@@ -268,11 +194,18 @@ def make_clouds(params, cloudless_dir):
 
     images_cloudless_all = load_npz_arrays_for_chip(params, chip_id)
 
-    image_cloudless, clouds = extract_clouds(params, image, label, images_cloudless_all, cloud_extract_model='additive')  
+    image_cloudless, clouds, opacity_mask = cloud_match.extract_clouds(
+        params,
+        image,
+        label,
+        images_cloudless_all,
+        cloud_extract_model=params['cloud_extract_model'],
+    )  
 
     band_diri = Path(DATA_DIR_CLOUDS / f"{chip_id}")
     Path(band_diri).mkdir(parents=True, exist_ok=True)
 
+    
     for band in params['bands_use']:
 
         # save clouds
@@ -280,7 +213,7 @@ def make_clouds(params, cloudless_dir):
         Path(band_diri).mkdir(parents=True, exist_ok=True)
 
         band_loc = band_diri / f"{band}.tif"
-        band_image = Image.fromarray(clouds[band])        
+        band_image = Image.fromarray(clouds[band])    
         band_image.save(band_loc)                                  
 
         # save most similar cloudless image
@@ -291,13 +224,17 @@ def make_clouds(params, cloudless_dir):
         band_image = Image.fromarray(image_cloudless[band])        
         band_image.save(band_loc)                                  
 
-    # save label
+    # save label and opacity mask
     band_diri = Path(DATA_DIR_CLOUDS / f"{chip_id}")
-
+    
     band_loc = band_diri / f"label.tif"
     band_labels = Image.fromarray(label)        
     band_labels.save(band_loc)                                  
 
+    band_loc = band_diri / f"opacity.tif"
+    band_opacity_mask = Image.fromarray(opacity_mask)        
+    band_opacity_mask.save(band_loc)  
+    
 def run_make_clouds(params: dict):
     
     cloudless_dirs = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
@@ -330,16 +267,24 @@ def main():
                         help="bands desired")
     parser.add_argument("--bands_new", nargs='+', default=None,
                         help="additional bands to use beyond original four")
-    parser.add_argument("-ncv", "--num_cross_validation_splits", type=int, default=4,
+    
+    parser.add_argument("-ncv", "--num_cross_validation_splits", type=int, default=5,
                         help="fraction of data to put in validation set") 
+    
     parser.add_argument("--save_cloudless_as_tif", action="store_true",
                         help="For each cloudless chip save array of band data (Nimg, H, W) as invididual .tif files") 
         
     parser.add_argument("--extract_clouds", action="store_true",
                         help="Extract clouds from pairs of cloudy and cloudless chips") 
     
+    parser.add_argument("--cloud_extract_model", type=str, default='opacity',
+                        help="Cloud model to use", choices=['opacity', 'additive']) 
+        
     parser.add_argument("--remake_all", action="store_true",
-                        help="Remake all images, and overwrite current ones on disk") 
+                        help="Remake all images, and overwrite current ones on disk")
+    
+    parser.add_argument("--max_pool_size", type=int, default=64,
+                    help="number of pooling threads to use")
     
     parser.add_argument("--interpolation_order", type=int, default=0,
                         help="interpolation order for resizing images") 

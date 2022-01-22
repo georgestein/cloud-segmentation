@@ -5,6 +5,8 @@ import rasterio
 import torch
 from typing import Optional, List
 import torchvision
+from scipy.ndimage import gaussian_filter
+import os
 
 import cloud_seg.utils.band_normalizations as band_normalizations
 
@@ -19,9 +21,10 @@ class CloudDataset(torch.utils.data.Dataset):
         x_paths: pd.DataFrame,
         bands: List[str],
         y_paths: Optional[pd.DataFrame] = None,
-        cloudbank: Optional[pd.DataFrame] = None,
         transforms: Optional[list] = None,
         custom_feature_channels: str = None,
+        cloudbank: Optional[pd.DataFrame] = None,
+        cloud_transforms: Optional[list] = None,
     ):
         """
         Instantiate the CloudDataset class.
@@ -39,11 +42,12 @@ class CloudDataset(torch.utils.data.Dataset):
             custom_feature_channels (str, optional): use difference of channels, ratios, etc, rather than just bands
         """
         self.data  = x_paths
-        self.label = y_paths
+        self.labels = y_paths
         self.cloudbank = cloudbank
+        self.cloud_transforms = cloud_transforms
         if cloudbank is not None:
             self.len_cloudbank = len(cloudbank)
-        
+            self.sigma_label_smooth = 20
         self.transforms = transforms
         self.custom_feature_channels = custom_feature_channels
         
@@ -68,12 +72,14 @@ class CloudDataset(torch.utils.data.Dataset):
         x_arr = np.stack(band_arrs, axis=-1) # images in (B, H, W, C)
 
         # Load label if available
-        if self.label is not None:
-            label_path = self.label.loc[idx].label_path
-            if label_path != 'None':
+        if self.labels is not None:
+            label_path = self.labels.loc[idx].label_path
+
+            if (label_path != 'none') and (label_path != 'cloudless'):
                 with rasterio.open(label_path) as lp:
                     y_arr = lp.read(1).astype("float32")
-            else:
+                    
+            if label_path == 'cloudless':
                 # This is a cloudless image, so sample a random cloud chip from cloudbank
                 # load in new cloud label, and add cloud band data to x_arr bands
                 idx_cloud = np.random.randint(0, self.len_cloudbank)
@@ -83,6 +89,18 @@ class CloudDataset(torch.utils.data.Dataset):
                 with rasterio.open(cloud_paths.label_path) as lp:
                     y_arr = lp.read(1).astype("float32")  
                     
+                # load cloud opacity
+                opacity_path = os.path.dirname(os.path.abspath(cloud_paths.label_path))
+                with rasterio.open(os.path.join(opacity_path, "opacity.tif")) as lp:
+                    opacity_arr = lp.read(1).astype("float32")  
+                                       
+                # get smoothed version of label to smooth edges between new clouds and original chip
+                
+                y_arr_wide = gaussian_filter(y_arr, sigma=self.sigma_label_smooth)
+                y_arr_wide = ((y_arr_wide > 0.05)*1).astype("float32")
+
+                y_arr_smooth = gaussian_filter(y_arr_wide, sigma=self.sigma_label_smooth)
+    
                 # load cloud bands
                 band_arrs = []
                 for band in self.bands:
@@ -90,8 +108,17 @@ class CloudDataset(torch.utils.data.Dataset):
                         band_arr = b.read(1).astype("float32")
                     band_arrs.append(band_arr)
                     
-                # add clouds to cloudless image
-                x_arr += np.stack(band_arrs, axis=-1)
+                x_arr_clouds = np.stack(band_arrs, axis=-1)
+                
+                # Apply special augmentations to clouds and cloud labels
+                if self.cloud_transforms is not None:
+                    transformed = self.cloud_transforms(image=x_arr_clouds, mask=y_arr)
+                    x_arr_clouds = transformed["image"]
+                    y_arr = transformed["mask"]
+                
+                # add clouds to cloudless image, differently where opacity==1 and where opacity==0
+                x_arr = ( (x_arr_clouds * opacity_arr[..., None])
+                         +  (x_arr + x_arr_clouds * y_arr_smooth[..., None]) * (1-opacity_arr[..., None]))
 
         if self.custom_feature_channels is not None:
             # modify x_arr (N,H,W,C) from band data to custom designed features
@@ -120,9 +147,9 @@ class CloudDataset(torch.utils.data.Dataset):
         # Prepare dictionary for item
         item = {}
         item["chip_id"] = img.chip_id
-        
+
         # Apply data augmentations, if provided
-        if self.label is not None:
+        if self.labels is not None:
             # Apply same data augmentations to the label
             if self.transforms:
                 transformed = self.transforms(image=x_arr, mask=y_arr)
@@ -131,7 +158,7 @@ class CloudDataset(torch.utils.data.Dataset):
                 
             item["label"] = y_arr
             
-        if self.label is None:
+        if self.labels is None:
             if self.transforms:
                 x_arr = self.transforms(image=x_arr)["image"]
                 

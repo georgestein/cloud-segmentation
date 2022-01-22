@@ -67,9 +67,16 @@ def main(args):
     val_transforms, val_transforms_names = Augs.add_augmentations(augs_val)
     val_transforms = A.Compose(val_transforms)
 
-    print(train_transforms_names, val_transforms_names)
-    print(train_transforms, val_transforms)
+    print("Train, val transforms: ", train_transforms_names, val_transforms_names)
     
+    cloud_transforms = None
+    if hparams['cloud_augment']
+        # Set up transforms using Albumentations library
+        cloud_transforms, cloud_transforms_names = Augs.add_augmentations(hparams['cloud_augmentations'])
+        cloud_transforms = A.Compose(cloud_transforms)
+        print("cloud transforms: ", cloud_transforms_names)
+
+
     
     # set up logger and model outputs to have meaningful name
 
@@ -146,6 +153,7 @@ def main(args):
         cloudbank=df_cloudbank,
         train_transforms=train_transforms,
         val_transforms=val_transforms,
+        cloud_transforms=cloud_transforms,
         hparams=hparams,
     )
 
@@ -281,6 +289,9 @@ if __name__=='__main__':
     parser.add_argument("--augmentations", type=str, default='vfrc',
                         help="training augmentations to use")
     
+    parser.add_argument("--cloud_augmentations", type=str, default='vfrc',
+                        help="training augmentations to use for cloudmix")
+        
     parser.add_argument("--cloud_augment", action="store_true",
                         help="Use cloud augmentation")
     

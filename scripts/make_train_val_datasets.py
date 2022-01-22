@@ -101,7 +101,7 @@ def construct_cloudless_datafame(df_val, params: dict):
 
     # add new cloudless images to train_y_new
     data = np.c_[np.array(train_x_cloudless['chip_id']),
-                 np.array(['None']*len(train_x_cloudless['chip_id']))]
+                 np.array(['cloudless']*len(train_x_cloudless['chip_id']))]
     train_y_cloudless = pd.DataFrame(data, columns=['chip_id', 'label_path'])
 
     print(f"Number of cloudless chips is not overlapping with validation set is {len(train_x_cloudless)}")

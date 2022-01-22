@@ -28,6 +28,7 @@ class CloudModel(pl.LightningModule):
         cloudbank: Optional[pd.DataFrame] = None,
         train_transforms = None,
         val_transforms = None,
+        cloud_transforms = None,
         hparams: dict = {},
     ):
         """
@@ -96,16 +97,19 @@ class CloudModel(pl.LightningModule):
 
         self.train_transform = train_transforms
         self.val_transform = val_transforms
-
+        self.cloud_transform = cloud_transforms
+        
         # Instantiate datasets, model, and trainer params if provided
         self.train_dataset = CloudDataset(
             x_paths=x_train,
             bands=self.bands,
             y_paths=y_train,
-            cloudbank=cloudbank,
             transforms=self.train_transform,
+            cloudbank=cloudbank,
+            cloud_transforms=self.cloud_transform,
             custom_feature_channels=self.custom_feature_channels,
         )
+        
         self.val_dataset = CloudDataset(
             x_paths=x_val,
             bands=self.bands,
