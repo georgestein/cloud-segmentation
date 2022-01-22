@@ -9,6 +9,7 @@ NCHIPS_TRAIN = 11600
 NCHIPS_VAL = 178
 PIX_SAMPLED_PER_IMAGE = 2048
 IMAGE_URL = 'https://portal.nersc.gov/project/cusp/ssl_galaxy_surveys/random/'
+BAD_CHIP_PATH = './cloud-segmentation/data/BAD_CHIP_DATA/BAD_CHIP_LABEL_IDS.txt'
 RANDOM_SEED = 0
 
 def create_compiled_dataset(bands, download=False):
@@ -58,3 +59,37 @@ def download_file(file_name: str) -> None:
     stdout, stderr = p.communicate()
     if stderr is not None:
         print(stderr)
+
+def create_chip_mask(bad_chip_path: str=BAD_CHIP_PATH, download: bool=False):
+    """Create a msk of bad chips."""
+    bad_chips = get_bad_chips(bad_chip_path)
+
+    is_bad_chip = np.zeros((NCHIPS_TRAIN//100, 100), dtype=np.uint8)
+
+    for i in range(NCHIPS_TRAIN//100):
+
+        chip_id_name = f'chip_ids_{i*100:06d}_{(i+1)*100:06d}.npy'
+        if download:
+            download_file(chip_id_name)
+        else:
+            chip_id_name = DATA_DIR/chip_id_name
+
+        chip_ids = np.load(chip_id_name)
+        for j, chip_id in enumerate(chip_ids):
+            if chip_id in bad_chips:
+                is_bad_chip[i, j] = 1
+
+        if download:
+            os.remove(chip_id_name)
+
+    is_bad_chip = np.tile(is_bad_chip, (1, 1, PIX_SAMPLED_PER_IMAGE))
+    is_bad_chip = is_bad_chip.flatten()
+
+    np.save(f'train_features_bad_chip_mask.npy', is_bad_chip)
+
+def get_bad_chips(bad_chip_path):
+    """Get the list of bad chips."""
+    with open(bad_chip_path) as f:
+        bad_chips = f.readlines()
+    bad_chips = [bad_chip.strip('\n') for bad_chip in bad_chips]
+    return bad_chips
