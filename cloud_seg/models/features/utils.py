@@ -14,7 +14,7 @@ def intersection_over_union(predictions: np.array, labels: np.array) -> float:
 
     return intersection.sum() / union.sum()
 
-def TPR(predictions, labels):
+def true_positive_rate(predictions, labels):
     valid_pixel_mask = labels != 255
     labels = labels.copy()[valid_pixel_mask]
     predictions = predictions.copy()[valid_pixel_mask]
