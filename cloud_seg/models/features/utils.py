@@ -13,3 +13,9 @@ def intersection_over_union(predictions: np.array, labels: np.array) -> float:
     union = np.logical_or(labels, predictions)
 
     return intersection.sum() / union.sum()
+
+def TPR(predictions, labels):
+    valid_pixel_mask = labels != 255
+    labels = labels.copy()[valid_pixel_mask]
+    predictions = predictions.copy()[valid_pixel_mask]
+    return (predictions & labels).sum()/labels.sum()
