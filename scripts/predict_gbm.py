@@ -23,7 +23,7 @@ def feature_classification(args=None):
     clf = load(model_path)
 
     for image_id in tqdm.tqdm(image_ids):
-        image_features = Features(set_type='val', file_name=image_id)
+        image_features = Features(set_type='val', file_name=image_id, data_dir=data_dir)
         for feature in feature_list:
             image_features.add(feature)
 

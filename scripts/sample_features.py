@@ -1,4 +1,6 @@
-from cloud_seg.io.features_from_sampled_datasets import create_compiled_dataset
+from cloud_seg.io.features_from_sampled_datasets import create_compiled_dataset, create_chip_mask
+
+bad_chip_path = './cloud-segmentation/data/BAD_CHIP_DATA/BAD_CHIP_LABEL_IDS.txt'
 
 bands = ['B02', 'B03', 'B04', 'B08',
          'B05', 'B06', 'B07', 'B09',
@@ -13,4 +15,4 @@ create_compiled_dataset(bands[8:12])
 
 create_compiled_dataset(bands[12:])
 
-
+create_chip_mask(bad_chip_path)
