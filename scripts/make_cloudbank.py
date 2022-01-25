@@ -18,6 +18,10 @@ import glob
 import argparse
 import os
 
+import multiprocessing
+import subprocess
+import skimage.transform as st
+
 from cloud_seg.utils import utils
 from cloud_seg.io import io
 from cloud_seg.models.cloudmix import cloud_mlp
@@ -35,22 +39,96 @@ TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new/"
 
 TRAIN_LABELS = DATA_DIR / "train_labels/"
 
+IMAGE_OUTSIZE = [512, 512]
+INTERPOLATION_ORDER = 0
+
 assert TRAIN_FEATURES.exists(), TRAIN_LABELS.exists()
 
 Path(DATA_DIR_OUT).mkdir(parents=True, exist_ok=True)
 Path(DATA_DIR_CLOUDS).mkdir(parents=True, exist_ok=True)
 
+
+parser = argparse.ArgumentParser(description='runtime parameters')
+parser.add_argument("--bands", nargs='+' , default=["B02", "B03", "B04", "B08"],
+                    help="bands desired")
+
+parser.add_argument("--bands_new", nargs='+', default=None,
+                    help="additional bands to use beyond original four")
+
+parser.add_argument("-ncv", "--num_cross_validation_splits", type=int, default=5,
+                    help="fraction of data to put in validation set") 
+
+parser.add_argument("--save_cloudless_as_tif", action="store_true",
+                    help="For each cloudless chip save array of band data (Nimg, H, W) as invididual .tif files") 
+
+parser.add_argument("--extract_clouds", action="store_true",
+                    help="Extract clouds from pairs of cloudy and cloudless chips") 
+
+parser.add_argument("--cloud_extract_model", type=str, default='opacity',
+                    help="Cloud model to use", choices=['opacity', 'additive']) 
+
+parser.add_argument("--frac_all_cloud_keep", type=float, default=0.1,
+                    help="Fraction of total cloud cover cloud chips to keep") 
+
+parser.add_argument("--remake_all", action="store_true",
+                    help="Remake all images, and overwrite current ones on disk")
+
+parser.add_argument("--max_pool_size", type=int, default=64,
+                help="number of pooling threads to use")
+
+parser.add_argument("--interpolation_order", type=int, default=0,
+                    help="interpolation order for resizing images") 
+
+parser.add_argument("--seed", type=int , default=13579,
+                    help="random seed for train test split")
+
+parser.add_argument("--dont_save_to_disk", action="store_true",
+                    help="save training and validation sets to disk")  
+
+parser.add_argument("-v", "--verbose", action="store_true",
+                    help="increase output verbosity")
+
+params = vars(parser.parse_args())
+params['bands_use'] = sorted(params['bands'] + params['bands_new']) if params['bands_new'] is not None else params['bands']
+
+params['outsize'] = [512, 512]
+
+if params['verbose']: print("Parameters are: ", params)
+    
 def construct_cloudbank_dataframe(df_val, params: dict):
     """Construct cloudbank using all chips that do not overlap with validation set"""
+    np.random.seed(params['seed'])
+    
     cloud_chips = sorted(glob.glob(str(DATA_DIR_CLOUDS) + '/*'))
     
     # Check that files exist in directory
     cloud_chips = [i for i in cloud_chips if os.path.isfile(os.path.join(i,'B04.tif'))] 
     print(f"\nTotal number of cloud chips is {len(cloud_chips)}")
-    
+
     # remove cloud chips that are from validation sample
     in_val = [os.path.basename(i) in df_val['chip_id'].to_numpy() for i in cloud_chips]
     cloud_chips = [chip for ichip, chip in enumerate(cloud_chips) if not in_val[ichip]] 
+    print(f"\nTotal number of cloud chips not overlapping validation chips is {len(cloud_chips)}")
+
+    # Get label stats to use to remove certain chips
+    labels_mean = np.array([np.mean(np.array(Image.open(os.path.join(chip_dir, 'label.tif')))) for chip_dir in cloud_chips])
+    cloud_chips = np.array(cloud_chips)
+    
+    # Remove cloud chips where mean(label)==0 (these are not cloud chips anyways)
+    dm_no_cloud = labels_mean == 0.
+
+    # subsample chips where mean(label)==1
+    dm_all_cloud = labels_mean == 1.
+    all_cloud_chips = np.random.choice(
+        cloud_chips[dm_all_cloud],
+        int(np.sum(dm_all_cloud) * params['frac_all_cloud_keep']),
+        replace=False,
+    )
+
+    cloud_chips = list(cloud_chips[~dm_no_cloud & ~dm_all_cloud])
+    cloud_chips += list(all_cloud_chips)
+    
+    print(f"\nTotal number of cloud chips after removing selected is {len(cloud_chips)}")
 
     cloudbank = []
     for chip in cloud_chips:
@@ -64,7 +142,6 @@ def construct_cloudbank_dataframe(df_val, params: dict):
         cloudbank.append([chip_id]+feature_cols+label_col)
 
     df_meta = pd.DataFrame(cloudbank, columns=list(df_val.columns)+['label_path'])
-    print(f"Size of cloudbank not overlapping validation chips is {len(df_meta)} chips")
     df_meta.head()
     
     return df_meta
@@ -87,7 +164,7 @@ def save_dataframe_to_disk(df_meta, isplit, params: dict):
 
     df_meta.to_csv(DATA_DIR_OUT / file_name_out, index=False)
 
-def load_npz_arrays_for_chip(params, chip_id):
+def load_npz_arrays_for_chip(chip_id):
     
     cloudless_chip_dir = DATA_DIR_CLOUDLESS / chip_id
     images_cloudless_all = {}
@@ -101,12 +178,23 @@ def load_npz_arrays_for_chip(params, chip_id):
         images_in = np.array(d_["images"]).astype(np.float32)
 
         single_image = False
+        if images_in.shape[0] == 1:
+            single_image = True
         if images_in.ndim < 3:
             # only a single image was saved to .npz file
             single_image = True
             images_in = images_in[None, ...]
-
-            
+        
+        images_resize = np.zeros((len(images_in), IMAGE_OUTSIZE[0], IMAGE_OUTSIZE[1]), dtype=np.float32)
+        for i in range(0, len(images_in)):
+            if images_in[i].shape != IMAGE_OUTSIZE:
+                images_resize[i] = st.resize(
+                    images_in[i].astype(np.float32),
+                    IMAGE_OUTSIZE,
+                    order=INTERPOLATION_ORDER,
+                )
+        images_in = images_resize
+        
         # images_out = np.zeros( (images_in.shape[0], params['outsize'][0], params['outsize'][1]), dtype=np.float32)
         # for i in range(images_in.shape[0]):
         #     images_out[i] = utils.resize_image(images_in[i], params['outsize'], interpolation_order=params['interpolation_order']) 
@@ -125,6 +213,7 @@ def load_npz_arrays_for_chip(params, chip_id):
         images_cloudless_all[band+"_nimg"] = images_in.shape[0]
         
     nimages = images_cloudless_all["B02_nimg"]
+    
     images_matching = np.full(nimages, True, dtype=bool)
     for iimg in range(nimages):
         for iband, band in enumerate(params['bands_use']):
@@ -143,14 +232,36 @@ def load_npz_arrays_for_chip(params, chip_id):
         
     return images_cloudless_all_matching       
 
-def save_npz_chip_arrays_to_tif(params: dict):
+def save_npz_chip_arrays_to_tif(cloudless_dir):
     
-    cloudless_dirs = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
+    chip_id = os.path.basename(cloudless_dir)
+    print(chip_id)
+    
+    images_cloudless_all = load_npz_arrays_for_chip(chip_id)
 
-    for ic, cloudless_dir in enumerate(cloudless_dirs):
+    for iimg in range(images_cloudless_all["B02"].shape[0]):
+        band_diri = Path(DATA_DIR_CLOUDLESS_TIF / f"{chip_id}/{iimg}/")
+        Path(band_diri).mkdir(parents=True, exist_ok=True)
 
-        if ic % 100 == 0:
-            print('Running on ', ic)
+        for band in params['bands_use']:
+
+            band_loc = band_diri / f"{band}.tif"
+            # if not os.path.isfile(band_loc):
+            band_image = Image.fromarray(images_cloudless_all[band][iimg])        
+            band_image.save(band_loc)   
+
+def run_npz_chip_arrays_to_tif(params: dict):
+    
+    cloudless_dirs_all = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
+    # check npz exists on disk
+    print(len(cloudless_dirs_all))
+    cloudless_dirs_all = [i for i in cloudless_dirs_all if os.path.isfile(os.path.join(i,'B04.npz'))] 
+    print(len(cloudless_dirs_all))
+
+    cloudless_dirs = []
+
+    for ic, cloudless_dir in enumerate(cloudless_dirs_all):
+
         chip_id = os.path.basename(cloudless_dir)
 
         # check if output files already exist for this chip. Skip if so
@@ -164,20 +275,24 @@ def save_npz_chip_arrays_to_tif(params: dict):
         
         if exists:
             continue
-        images_cloudless_all = load_npz_arrays_for_chip(params, chip_id)
+            
+        cloudless_dirs.append(cloudless_dir)
     
-        for iimg in range(images_cloudless_all["B02"].shape[0]):
-            band_diri = Path(DATA_DIR_CLOUDLESS_TIF / f"{chip_id}/{iimg}/")
-            Path(band_diri).mkdir(parents=True, exist_ok=True)
+    if params['max_pool_size'] <= 1:
+        for cloudless_dir in cloudless_dirs:
+            save_npz_chip_arrays_to_tif(cloudless_dir)
+            
+    else:
+        cpus = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(cpus if cpus < params['max_pool_size'] else params['max_pool_size'])
+        print(f"Number of available cpus = {cpus}")
 
-            for band in params['bands_use']:
+        pool.map(save_npz_chip_arrays_to_tif, cloudless_dirs)#.get()
 
-                band_loc = band_diri / f"{band}.tif"
-                # if not os.path.isfile(band_loc):
-                band_image = Image.fromarray(images_cloudless_all[band][iimg])        
-                band_image.save(band_loc)   
-
-def make_clouds(params, cloudless_dir):
+        pool.close()
+        pool.join()  
+        
+def make_clouds(cloudless_dir):
     
     chip_id = os.path.basename(cloudless_dir)
     print(chip_id)
@@ -192,8 +307,11 @@ def make_clouds(params, cloudless_dir):
 
     files = sorted(glob.glob(str(DATA_DIR_CLOUDLESS / chip_id / '*')))
 
-    images_cloudless_all = load_npz_arrays_for_chip(params, chip_id)
-
+    try:
+        images_cloudless_all = load_npz_arrays_for_chip(params, chip_id)
+    except:
+        return
+    
     image_cloudless, clouds, opacity_mask = cloud_match.extract_clouds(
         params,
         image,
@@ -205,7 +323,6 @@ def make_clouds(params, cloudless_dir):
     band_diri = Path(DATA_DIR_CLOUDS / f"{chip_id}")
     Path(band_diri).mkdir(parents=True, exist_ok=True)
 
-    
     for band in params['bands_use']:
 
         # save clouds
@@ -235,76 +352,52 @@ def make_clouds(params, cloudless_dir):
     band_opacity_mask = Image.fromarray(opacity_mask)        
     band_opacity_mask.save(band_loc)  
     
+    return
+
 def run_make_clouds(params: dict):
     
-    cloudless_dirs = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
+    cloudless_dirs_all = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
+    # Check .npz data exists on disk 
 
-    for ic, cloudless_dir in enumerate(cloudless_dirs):
+    cloudless_dirs = []
 
-        if ic % 10 == 0:
-            print('Running on ', ic)
- 
+    print(params)
+    for ic, cloudless_dir in enumerate(cloudless_dirs_all):
+
         chip_id = os.path.basename(cloudless_dir)
 
         # check if output files already exist for this chip. Skip if so
         exists = True 
         if params['remake_all']: 
             exists = False
-        
+
         for band in params['bands_use']:
             if not Path(DATA_DIR_CLOUDS / f'{chip_id}/{band}.tif').is_file():
                 exists = False
-        
+
         if exists:
             continue
-           
-        make_clouds(params, cloudless_dir)
+        
+        cloudless_dirs.append(cloudless_dir)
+
+    if params['max_pool_size'] <= 1:
+        for cloudless_dir in cloudless_dirs:
+            make_clouds(cloudless_dir)
+    else:
+        cpus = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(cpus if cpus < params['max_pool_size'] else params['max_pool_size'])
+        print(f"Number of available cpus = {cpus}")
+
+        pool.map(make_clouds, cloudless_dirs)#.get()
+
+        pool.close()
+        pool.join()    
+        
         
 def main():
-    
-    parser = argparse.ArgumentParser(description='runtime parameters')
-    parser.add_argument("--bands", nargs='+' , default=["B02", "B03", "B04", "B08"],
-                        help="bands desired")
-    parser.add_argument("--bands_new", nargs='+', default=None,
-                        help="additional bands to use beyond original four")
-    
-    parser.add_argument("-ncv", "--num_cross_validation_splits", type=int, default=5,
-                        help="fraction of data to put in validation set") 
-    
-    parser.add_argument("--save_cloudless_as_tif", action="store_true",
-                        help="For each cloudless chip save array of band data (Nimg, H, W) as invididual .tif files") 
-        
-    parser.add_argument("--extract_clouds", action="store_true",
-                        help="Extract clouds from pairs of cloudy and cloudless chips") 
-    
-    parser.add_argument("--cloud_extract_model", type=str, default='opacity',
-                        help="Cloud model to use", choices=['opacity', 'additive']) 
-        
-    parser.add_argument("--remake_all", action="store_true",
-                        help="Remake all images, and overwrite current ones on disk")
-    
-    parser.add_argument("--max_pool_size", type=int, default=64,
-                    help="number of pooling threads to use")
-    
-    parser.add_argument("--interpolation_order", type=int, default=0,
-                        help="interpolation order for resizing images") 
-             
-    parser.add_argument("--seed", type=int , default=13579,
-                        help="random seed for train test split")
-    parser.add_argument("--dont_save_to_disk", action="store_true",
-                        help="save training and validation sets to disk")     
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="increase output verbosity")
-   
-    params = vars(parser.parse_args())
-    params['bands_use'] = sorted(params['bands'] + params['bands_new']) if params['bands_new'] is not None else params['bands']
-    
-    params['outsize'] = [512, 512]
 
-    if params['verbose']: print("Parameters are: ", params)
-    
     if params['save_cloudless_as_tif']:
-        save_npz_chip_arrays_to_tif(params)
+        run_npz_chip_arrays_to_tif(params)
 
     if params['extract_clouds']:
         # Extract all clouds from pairs of cloudy and cloudless chips

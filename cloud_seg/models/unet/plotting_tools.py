@@ -7,6 +7,8 @@ from matplotlib import pyplot as plt
 import xarray
 import xrspatial.multispectral as ms
 
+from cloud_seg.utils.band_normalizations import feder_scale
+
 # from pytorch_lightning.utilities import rank_zero_only
 # @rank_zero_only
 
@@ -90,6 +92,10 @@ def plot_prediction_grid(
             if custom_feature_channels is None:
                 xi = true_color_img(x[img_i].to("cpu").numpy().astype(np.float32), normalized=True)
                 
+            if custom_feature_channels == "feder_scale":
+                xi = feder_scale(x[img_i], inv=True).to("cpu").numpy().astype(np.float32)
+                xi = true_color_img(xi, normalized=False)
+                                    
             if custom_feature_channels == "true_color":
                 xi = x[img_i].to("cpu").numpy().astype(np.float32)
                 xi = np.transpose(xi, [1, 2, 0]).astype(np.uint8)

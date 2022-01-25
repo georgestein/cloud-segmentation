@@ -6,7 +6,7 @@ class CloudAugmentations:
     def __init__(self, params):
 
         self.params = params
-        self.min_max_crop = params.get('min_max_crop', [512//2, 512])
+        self.min_max_crop = params.get('min_max_crop', [int(512//3*2), 512])
         self.aug_prob_soft = params.get('aug_prob_soft', 0.5) # soft augmentations. e.g. rotate, flip, ...
         self.aug_prob_medium = params.get('aug_prob_medium', 0.8) # random rescale, etc
         self.aug_prob_hard = params.get('aug_prob_hard', 0.2) # grid distortion, etc

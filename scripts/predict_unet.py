@@ -26,6 +26,7 @@ from cloud_seg.utils.augmentations import CloudAugmentations
 parser = argparse.ArgumentParser(description='runtime parameters')
 parser.add_argument("--bands", nargs='+' , default=["B02", "B03", "B04", "B08"],
                     help="bands desired")
+
 parser.add_argument("--bands_new", nargs='+', default=None,
                     help="additional bands to use beyond original four")
 
@@ -144,7 +145,11 @@ def get_metadata(bands: List[str]):
 
     for chip_id in sorted(chip_ids):
         # chip_bands = [INPUT_IMAGES_DIR / chip_id / f"{band}.tif" for band in bands]
-        chip_bands = [INPUT_IMAGES_DIR / chip_id / f"{band}.tif" if band not in hparams['bands_new'] else INPUT_IMAGES_DIR_NEW / chip_id / f"{band}.tif" for band in bands] 
+        if hparams['bands_new'] is not None:
+            chip_bands = [INPUT_IMAGES_DIR / chip_id / f"{band}.tif" if band not in hparams['bands_new'] else INPUT_IMAGES_DIR_NEW / chip_id / f"{band}.tif" for band in bands] 
+        else:
+            chip_bands = [INPUT_IMAGES_DIR / chip_id / f"{band}.tif" for band in bands] 
+
         chip_metadata[chip_id] = chip_bands
 
     return chip_metadata.transpose().reset_index().rename(columns={"index": "chip_id"})

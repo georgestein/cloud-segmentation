@@ -1,6 +1,14 @@
 import numpy as np
 
-def true_color_band(band_data, nodata=1, pixel_max=255, c=10., th=0.125):
+def feder_scale(feature, xmean=2775., kappa=1.0, inv=False):
+
+    if not inv:
+        return 2*(feature/xmean)/((feature/xmean)+kappa) - 1
+
+    if inv:
+        return -kappa * xmean * (feature+1) / (feature-1)
+    
+def true_color_band(band_data, nodata=1, pixel_max=1., c=10., th=0.125):
     """
     Normalize band with:    
     min_val = np.nanmin(data)
@@ -13,7 +21,6 @@ def true_color_band(band_data, nodata=1, pixel_max=255, c=10., th=0.125):
     Copied from https://xarray-spatial.org/_modules/xrspatial/multispectral.html#true_color
     """
     # a = np.where(np.logical_or(np.isnan(r), r <= nodata), 0, 255)
-    pixel_max = 255
 
     # h, w = band_data.shape
     # out = np.zeros((h, w, 4), dtype=np.uint8)
@@ -31,7 +38,7 @@ def normalize_data_xrspatial(data, pixel_max, c, th):
     """
     #min_val = np.nanmin(data)
     #max_val = np.nanmax(data)
-    min_val = 100
+    min_val = 0
     max_val = 10000
     data = np.clip(data, min_val, max_val)
     

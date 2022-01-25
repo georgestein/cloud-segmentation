@@ -38,12 +38,11 @@ DATA_DIR_CLOUDLESS_MOST_SIMILAR = DATA_DIR / 'cloudless_most_similar/'
 DATA_DIR_CLOUDLESS_TIF = DATA_DIR / 'cloudless_tif/'
 
 DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
-DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
+#DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
 # DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
 
-#PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
-
-PREDICTION_DIR = Path.cwd().parent.resolve() / "../trained_models/unet/5band_originaldata_efficientnet-b3_jaccard_vfhfrrtrrc_customfeats_None_2022-01-20/predictions/"
+# PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
+PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_cloudaugment_resnet18_bce_vfrc_customfeats_None_2022-01-24/predictions/"
 
 TRAIN_FEATURES = DATA_DIR / "train_features"
 TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"
@@ -63,7 +62,7 @@ parser.add_argument("--bands", nargs='+' , default=["B02", "B03", "B04", "B08"],
 parser.add_argument("--bands_new", nargs='+', default=None,
                     help="additional bands to use beyond original four")
 
-parser.add_argument("--chunksize", type=int, default=1000,
+parser.add_argument("--chunksize", type=int, default=100,
                     help="Chunksize for output arrays") 
 
 parser.add_argument("--max_pool_size", type=int, default=64,

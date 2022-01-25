@@ -70,13 +70,11 @@ def main(args):
     print("Train, val transforms: ", train_transforms_names, val_transforms_names)
     
     cloud_transforms = None
-    if hparams['cloud_augment']
+    if hparams['cloud_augment']:
         # Set up transforms using Albumentations library
         cloud_transforms, cloud_transforms_names = Augs.add_augmentations(hparams['cloud_augmentations'])
         cloud_transforms = A.Compose(cloud_transforms)
         print("cloud transforms: ", cloud_transforms_names)
-
-
     
     # set up logger and model outputs to have meaningful name
 
@@ -123,8 +121,8 @@ def main(args):
     
     if hparams['cloud_augment']:
 
-        train_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_cloudless_meta_cv{hparams['cross_validation_split']}.csv", index=False)
-        train_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_cloudless_meta_cv{hparams['cross_validation_split']}.csv", index=False)
+        train_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
+        train_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
 
         train_y = train_y.append(train_y_cloudless, ignore_index=True)
         train_x = train_x.append(train_x_cloudless, ignore_index=True)
@@ -247,7 +245,7 @@ if __name__=='__main__':
     parser.add_argument("--test_run_nchips", type=int, default=512,
                         help="Subsample training and validation data to this size")
 
-    parser.add_argument("--num_workers", type=int, default=3,
+    parser.add_argument("--num_workers", type=int, default=12,
                         help="number of data loader workers")
     
     parser.add_argument("--persistent_workers", action="store_false",
@@ -289,14 +287,14 @@ if __name__=='__main__':
     parser.add_argument("--augmentations", type=str, default='vfrc',
                         help="training augmentations to use")
     
-    parser.add_argument("--cloud_augmentations", type=str, default='vfrc',
+    parser.add_argument("--cloud_augmentations", type=str, default='vfhfrrtr',
                         help="training augmentations to use for cloudmix")
         
     parser.add_argument("--cloud_augment", action="store_true",
                         help="Use cloud augmentation")
     
     parser.add_argument("--custom_feature_channels", type=str, default=None,
-                        help="Use cloud augmentation", choices=['true_color', 'log_bands', 'ratios'])
+                        help="Use cloud augmentation", choices=['feder_scale', 'true_color', 'log_bands', 'ratios'])
 
     
     args = parser.parse_args()
