@@ -170,7 +170,7 @@ def generate_colour_ratio(band1: str, band2: str, validation: bool=False, name: 
     return colour
 
 class Features():
-    def __init__(self, set_type: str='train', file_name: str=None, data_dir os.PathLike=DATA_DIR):
+    def __init__(self, set_type: str='train', file_name: str=None, data_dir: os.PathLike=DATA_DIR):
         assert set_type in ['train', 'val']
         if set_type == 'train':
             self.npixels = 23756800
