@@ -187,6 +187,7 @@ class Features():
         self.data_dir = data_dir
         
     def add(self, feature: str):
+
         if '-' in feature:
             new_feature = generate_colour_difference(*feature.split('-'), self.validation, self.file_name, self.data_dir)
         elif '/' in feature:
@@ -194,8 +195,17 @@ class Features():
         else:
             new_feature = get_band(feature, self.validation, self.file_name, self.data_dir)
         
-        self.value = np.concatenate(
-            (self.value, new_feature[:, np.newaxis]), axis=-1)
+        try:
+            self.value = np.concatenate(
+                (self.value, new_feature[:, np.newaxis]), axis=-1)
+
+        except ValueError as e:
+            if self.value.size > 0: 
+                raise e
+
+            self.npixels = new_feature.shape[0]
+            self.value = new_feature[:, np.newaxis]
+
         self.names += [feature]
         self.nfeatures += 1
     
