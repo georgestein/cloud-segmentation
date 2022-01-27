@@ -37,8 +37,8 @@ DATA_DIR_CLOUDLESS = DATA_DIR / 'cloudless/'
 DATA_DIR_CLOUDLESS_MOST_SIMILAR = DATA_DIR / 'cloudless_most_similar/'
 DATA_DIR_CLOUDLESS_TIF = DATA_DIR / 'cloudless_tif/'
 
-DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
-#DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
+#DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
+DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
 # DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
 
 # PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
@@ -115,6 +115,9 @@ if params['bands_new'] is not None:
 # Total number of chunks. Set as global variable
 params['nchunks'] = math.ceil(len(df_meta)/params['chunksize'])
 params['max_pool_size'] = min(params['nchunks'], params['max_pool_size'])
+
+# sort meta by predictions
+
 
 def intersection_and_union(pred, true):
     """                                                                                                         

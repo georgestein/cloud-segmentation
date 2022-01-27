@@ -25,6 +25,8 @@ import argparse
 from cloud_seg.pc_apis import query_bands
 from cloud_seg.utils import utils
 
+from datetime import date
+
 label_str = 'train'
 
 # locations to various directories
@@ -46,6 +48,13 @@ df = pd.read_csv(METADATA)
 # add existing bands
 df = utils.add_paths(df, FEATURES, LABELS)
 
+lat, lon = np.loadtxt("../data/interesting_places/lat_long.txt", unpack=True, delimiter=',')
+dlat = 0.5
+dlon = 0.5
+#left bottom right left
+lat_lon = np.c_[lon-dlon/2, lat-dlat/2, lon+dlon/2, lat+dlat/2]
+df_lat_lon = pd.DataFrame(lat_lon, columns=['left', 'bottom', 'right', 'top'])
+    
 parser = argparse.ArgumentParser(description='runtime parameters')
 parser.add_argument("--max_pool_size", type=int, default=64,
                     help="number of pooling threads to use")
@@ -69,6 +78,13 @@ parser.add_argument("--want_closest", action="store_true",
                     help="If true return only return closest chip to query (possibly query chip itself). \
                     Else return closest non-matching chips")
 
+parser.add_argument("--new_location", action="store_true",
+                    help="Pull data from new location")
+
+parser.add_argument("--only_cloudless", action="store_true",
+                    help="If true return only return closest chip to query (possibly query chip itself). \
+                    Else return closest non-matching chips")
+
 parser.add_argument("--max_cloud_cover", type=float, default=1.0,
                     help="only return chips with below this cloud cover")
 
@@ -89,20 +105,45 @@ if params['new_band_dirs'] == []:
     # no specific output directories specified, default to band names
     params['new_band_dirs'] = params['new_bands']
 
-if params['want_closest']:
+if params['want_closest'] and not params['new_location']:
     DATA_DIR_OUT = DATA_DIR / "train_features_new/"
+elif params['new_location']:
+    DATA_DIR_OUT = DATA_DIR / "cloudless_newlocations/"
 else:
     DATA_DIR_OUT = DATA_DIR / "cloudless/"
+    
 
 params['DATA_DIR_OUT'] = DATA_DIR_OUT
 print(params)
 
+def index_to_chip_string(index, nchars_per_string=4):
+    """create string AAAA, AAAB, ... for given index in 0,1,..."""
+    nchars_in_alphabet = 26
+
+    ind_char_start = 65
+    ind_chat_end = 91
+
+    chip_string = ''
+    for i in range(nchars_per_string-1, -1, -1):
+        chip_string += chr(ind_char_start+(index//nchars_in_alphabet**i)%nchars_in_alphabet)
+    
+    return chip_string
+    
 class PystacAsset:
-    def __init__(self, df_chip, params: dict):
+    def __init__(self, params, df_chip=None, lat_lon=None):
 
         self.df_chip = df_chip
-        self.chip_id = df_chip.chip_id
-        
+        if df_chip is not None:
+            # load locations from alteady existing geotiff
+            self.chip_id = df_chip.chip_id
+        elif lat_lon is not None:
+            # load locations from lat_lon
+            self.lat_lon = lat_lon
+            self.datetime = lat_lon['datetime'] 
+            self.chip_id = lat_lon['chip_id']
+        else:
+            sys.exit("no chip or lat_lon provided")
+            
         self.verbose = params.get("verbose", True)
         self.collection = params.get("collection", "sentinel-2-l2a")
         
@@ -171,17 +212,18 @@ class PystacAsset:
                 Save each band as .tif.
                 Useful for pulling additional band features corresponding to train/test chips
                 """
-                try:
-                    # resize image to 512, 512
-                    self.assets[band] = st.resize(
-                        self.assets[band].astype(np.float32),
-                        IMAGE_OUTSIZE,
-                        order=INTERPOLATION_ORDER,
-                    )
-                except:
-                    self.assets = {}
-                    self.assets[band] = np.full(IMAGE_OUTSIZE, 0, dtype=np.uint8)
-                    
+                if self.df_chip is not None:
+                    try:
+                        # resize image to 512, 512
+                        self.assets[band] = st.resize(
+                            self.assets[band].astype(np.float32),
+                            IMAGE_OUTSIZE,
+                            order=INTERPOLATION_ORDER,
+                        )
+                    except:
+                        self.assets = {}
+                        self.assets[band] = np.full(IMAGE_OUTSIZE, 0, dtype=np.uint8)
+
                 band_diri = Path(self.DATA_DIR_OUT / f"{self.chip_id}")
                 band_diri.mkdir(parents=True, exist_ok=True)
                 
@@ -212,23 +254,48 @@ class PystacAsset:
     def get_assets_from_chip(self):
 
         tstart = time.time()
-
-        print(f"\nFile {self.chip_id} doesn't exist")
-
+        # Load extra bands from PySTAC
+        # self.assets, self.items = query_bands.query_bands_from_lat_lon(
+        #     self.lat_lon,
+        #     timestamp=self.datetime,
+        #     asset_keys=self.new_bands,
+        #     collection=self.collection,
+        #     query_range_minutes=self.query_range_minutes,
+        #     verbose=self.verbose,
+        #     want_closest=self.want_closest,
+        #     max_cloud_cover=self.max_cloud_cover,
+        #     max_cloud_shadow_cover=self.max_cloud_shadow_cover,
+        #     max_item_limit=self.max_item_limit,
+        # )                  
         try:
-            # Load extra bands from PySTAC
-            self.assets, self.items = query_bands.query_bands(
-                rasterio.open(self.df_chip.B04_path),
-                timestamp=self.df_chip.datetime,
-                asset_keys=self.new_bands,
-                collection=self.collection,
-                query_range_minutes=self.query_range_minutes,
-                verbose=self.verbose,
-                want_closest=self.want_closest,
-                max_cloud_cover=self.max_cloud_cover,
-                max_cloud_shadow_cover=self.max_cloud_shadow_cover,
-                max_item_limit=self.max_item_limit,
-            )
+            if self.df_chip is not None:
+                # Load extra bands from PySTAC
+                self.assets, self.items = query_bands.query_bands(
+                    rasterio.open(self.df_chip.B04_path),
+                    timestamp=self.df_chip.datetime,
+                    asset_keys=self.new_bands,
+                    collection=self.collection,
+                    query_range_minutes=self.query_range_minutes,
+                    verbose=self.verbose,
+                    want_closest=self.want_closest,
+                    max_cloud_cover=self.max_cloud_cover,
+                    max_cloud_shadow_cover=self.max_cloud_shadow_cover,
+                    max_item_limit=self.max_item_limit,
+                )
+            if self.lat_lon is not None:
+                # Load extra bands from PySTAC
+                self.assets, self.items = query_bands.query_bands_from_lat_lon(
+                    self.lat_lon,
+                    timestamp=self.datetime,
+                    asset_keys=self.new_bands,
+                    collection=self.collection,
+                    query_range_minutes=self.query_range_minutes,
+                    verbose=self.verbose,
+                    want_closest=self.want_closest,
+                    max_cloud_cover=self.max_cloud_cover,
+                    max_cloud_shadow_cover=self.max_cloud_shadow_cover,
+                    max_item_limit=self.max_item_limit,
+                )                
         except:
             print(f"{self.chip_id} sucks and we can't find it")
             self.bad_chip = True
@@ -240,7 +307,7 @@ def download_assets(irow):
 
     row = df.iloc[irow]
     
-    pystac_chip = PystacAsset(row, params)
+    pystac_chip = PystacAsset(params, df_chip=row)
 
     if not pystac_chip.exists_on_disk:
         tstart = time.time()
@@ -251,25 +318,69 @@ def download_assets(irow):
 
         tend = time.time()
         if irow % 10 == 0:
+            
+            print("Download time for chip was {:.03f} s".format(tend-tstart))
+            
+def download_location_assets(irow):
+    
+    lat_lon = df_lat_lon.iloc[irow]
+    # lat_lon = {}
+    # lat_lon['left'] = 32.84001110492555 - 0.04606208603786399/2
+    # lat_lon['right'] = 32.886073190963415 -0.04606208603786399/2
+    # lat_lon['bottom'] = -2.569640871417797
+    # lat_lon['top'] = -2.5233147610469233
+    lat_lon['crs'] = 'EPSG:4326' #'EPSG:32736'                                                                                                    
+
+    lat_lon['datetime'] = '2020-04-29T08:20:47Z'
+    lat_lon['chip_id'] = index_to_chip_string(irow, nchars_per_string=4)
+
+    pystac_chip = PystacAsset(params, lat_lon=lat_lon)
+
+    if not pystac_chip.exists_on_disk:
+        tstart = time.time()
+
+        pystac_chip.get_assets_from_chip()
+        
+        try:
+            pystac_chip.save_assets_to_disk()
+        except:
+            print("no chips to save")
+        tend = time.time()
+        if irow % 10 == 0:
             print("Download time for chip was {:.03f} s".format(tend-tstart))
 
 def main():
     # Load params and data at top of script, and not in main(), 
     # as multiprocessing.pool does not like dictionary argments passed to map function
     
-    if params['max_pool_size'] <= 1:
-        for i in range(len(df)):
-            download_assets(i)
+    if not params['new_location']:
+        if params['max_pool_size'] <= 1:
+            for i in range(len(df)):
+                download_assets(i)
+        else:
+            cpus = multiprocessing.cpu_count()
+            pool = multiprocessing.Pool(cpus if cpus < params['max_pool_size'] else params['max_pool_size'])
+            print(f"Number of available cpus = {cpus}")
+
+            pool.map(download_assets, range(len(df)))#.get()
+
+            pool.close()
+            pool.join()
+
     else:
-        cpus = multiprocessing.cpu_count()
-        pool = multiprocessing.Pool(cpus if cpus < params['max_pool_size'] else params['max_pool_size'])
-        print(f"Number of available cpus = {cpus}")
+        if params['max_pool_size'] <= 1:
+            for i in range(len(df_lat_lon)):
+                download_location_assets(i)
+        else:
+            cpus = multiprocessing.cpu_count()
+            pool = multiprocessing.Pool(cpus if cpus < params['max_pool_size'] else params['max_pool_size'])
+            print(f"Number of available cpus = {cpus}")
 
-        pool.map(download_assets, range(len(df)))#.get()
+            pool.map(download_location_assets, range(len(df_lat_lon)))#.get()
 
-        pool.close()
-        pool.join()
-
+            pool.close()
+            pool.join()
+            
 if __name__=="__main__":
 
     main()

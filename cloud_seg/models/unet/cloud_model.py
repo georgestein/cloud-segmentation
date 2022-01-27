@@ -76,7 +76,10 @@ class CloudModel(pl.LightningModule):
         self.momentum = self.hparams.get("momentum", 0.9)
         self.T_0 = self.hparams.get("T_0", 10)
         self.eta_min = self.hparams.get("eta_min", 1e-5)
-      
+        
+        self.warmup_epochs = self.hparams.get("max_epochs", 10)
+        self.max_epochs = self.hparams.get("max_epochs", 40)
+
         self.reduce_learning_rate_factor = self.hparams.get("reduce_learning_rate_factor", 0.1)
 
         self.patience = self.hparams.get("patience", 10)
@@ -330,7 +333,7 @@ class CloudModel(pl.LightningModule):
             optimizer = torch.optim.AdamW(
                 self.model.parameters(),
                 lr=self.learning_rate,
-                weight_decay=0.01,
+                weight_decay=1e-4,
             )
             # sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=10)
 
@@ -356,8 +359,8 @@ class CloudModel(pl.LightningModule):
 
             scheduler = pl_bolts.optimizers.lr_scheduler.LinearWarmupCosineAnnealingLR(
                 optimizer,
-                warmup_epochs=10,
-                max_epochs=50,
+                warmup_epochs=self.warmup_epochs,
+                max_epochs=self.max_epochs,
             ) 
   
 

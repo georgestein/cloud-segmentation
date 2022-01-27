@@ -18,6 +18,8 @@ import albumentations as A
 from cloud_seg.models.unet.cloud_model import CloudModel
 from cloud_seg.utils.augmentations import CloudAugmentations
 
+import matplotlib.pyplot as plt
+
 DATA_DIR = Path.cwd().parent.resolve() / "data/"
 DATA_DIR_MODEL_TRAINING = DATA_DIR / "model_training/"
 DATA_DIR_CLOUDLESS = DATA_DIR / 'cloudless/tif/'
@@ -90,6 +92,7 @@ def main(args):
     model_out_name += f"_{hparams['augmentations']}"
     model_out_name += f"_customfeats_{hparams['custom_feature_channels']}"
     model_out_name += f"_{curent_time}"
+    model_out_name += f"_cv{hparams['cross_validation_split']}"
 
     hparams['model_training_name'] = model_out_name
     if hparams['test_run']:
@@ -124,8 +127,10 @@ def main(args):
         train_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
         train_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
 
-        train_y = train_y.append(train_y_cloudless, ignore_index=True)
-        train_x = train_x.append(train_x_cloudless, ignore_index=True)
+        # duplicate cloudless chips
+        for i in range(1):
+            train_y = train_y.append(train_y_cloudless, ignore_index=True)
+            train_x = train_x.append(train_x_cloudless, ignore_index=True)
 
         df_cloudbank = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"cloudbank_meta_cv{hparams['cross_validation_split']}.csv")
 
@@ -197,10 +202,29 @@ def main(args):
         # plugins=DDPSpawnPlugin(find_unused_parameters=False),
         callbacks=[checkpoint_callback, early_stopping_callback, lr_monitor],
         logger=tb_logger,
+        auto_lr_find=True,
     )
 
     # Fit the model
     trainer.fit(model=cloud_model)
+    
+#     # tune learning rate
+#     # trainer.fit(model=cloud_model)
+#     # Run learning rate finder
+#     lr_finder = trainer.tuner.lr_find(cloud_model)
+
+#     # Results can be found in
+#     print(lr_finder.results)
+
+#     # Plot with
+    
+#     fig = lr_finder.plot(suggest=True)
+#     plt.savefig("lr_tune.png")
+#     fig.show()
+
+#     # Pick point based on plot, or get suggestion
+#     new_lr = lr_finder.suggestion() 
+#     print(new_lr)
     
 if __name__=='__main__':
     
@@ -257,7 +281,7 @@ if __name__=='__main__':
     parser.add_argument("--loss_function", type=str, default='bce',
                         help="loss_function to use", choices=['bce', 'dice', 'jaccard'])
       
-    parser.add_argument("-lr", "--learning_rate", type=float, default=1e-3,
+    parser.add_argument("-lr", "--learning_rate", type=float, default=2e-3,
                         help="Learning rate for model optimization")
   
     parser.add_argument("--optimizer", type=str, default='ADAM',
@@ -266,6 +290,12 @@ if __name__=='__main__':
     parser.add_argument("--scheduler", type=str, default='plateau',
                         help="Learning rate scheduler to use", choices=['plateau', 'exponential', 'cosine'])
     
+    parser.add_argument("--warmup_epochs", type=int, default=10,
+                        help="Number of warmup epochs, linear from lr=0 to lr=lr")
+    
+    parser.add_argument("--max_epochs", type=int, default=50,
+                        help="Max number of epochs for cosine scheduler")
+                              
     parser.add_argument("--plot_validation_images", action="store_false",
                         help="Plot final batch to tensorboard")
                       
@@ -294,7 +324,7 @@ if __name__=='__main__':
                         help="Use cloud augmentation")
     
     parser.add_argument("--custom_feature_channels", type=str, default=None,
-                        help="Use cloud augmentation", choices=['feder_scale', 'true_color', 'log_bands', 'ratios'])
+                        help="Transform from band values to others", choices=['feder_scale', 'true_color', 'log_bands', 'ratios'])
 
     
     args = parser.parse_args()

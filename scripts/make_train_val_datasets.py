@@ -14,6 +14,7 @@ import os
 DATA_DIR = Path.cwd().parent.resolve() / "data/"
 DATA_DIR_OUT = DATA_DIR / "model_training/"
 DATA_DIR_CLOUDLESS = DATA_DIR / "cloudless_tif/"
+DATA_DIR_CLOUDLESS_NEW_LOCATIONS = DATA_DIR / "cloudless_newlocations/all_chunks/"
 
 TRAIN_FEATURES = DATA_DIR / "train_features"
 TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"
@@ -70,12 +71,22 @@ def construct_cloudless_datafame(df_val, params: dict):
     
     Dataloader will then draw random index to load in cloud files and cloud labels from cloud chips, and add clouds to images
     """
+    ### FIRST ADD CLOUDLESS CHIPS THAT HAVE CLOUDY VERSIONS IN ORIGINAL DATA
     all_chips = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
 
     # remove cloudless chips that have cloudy versions in validation sample
     in_val = [os.path.basename(i) in df_val['chip_id'].to_numpy() for i in all_chips]
     all_chips = [chip for ichip, chip in enumerate(all_chips) if not in_val[ichip]] 
 
+    # remove chips that had good performance in previus model (leaving desert, water, etc...)
+    if params['select_worst_pred_chips']:
+        chip_ids_worst_preds = np.loadtxt("../data/BAD_CHIP_DATA/worst_preds_chip_ids.txt", dtype=str)
+        scale_worst_preds = np.loadtxt("../data/BAD_CHIP_DATA/worst_preds_int-union.txt", dtype=float)
+    
+        chip_ids_keep = chip_ids_worst_preds[scale_worst_preds > params['bad_pred_minimum']]
+        chip_dirs_keep = [os.path.join(str(DATA_DIR_CLOUDLESS),chip) for chip in chip_ids_keep]
+        all_chips = [chip for chip in all_chips if chip in chip_dirs_keep]
+        
     num_cloudless_chips = params['num_cloudless_chips']
     if num_cloudless_chips < 0:
         num_cloudless_chips = len(all_chips)
@@ -104,10 +115,43 @@ def construct_cloudless_datafame(df_val, params: dict):
                  np.array(['cloudless']*len(train_x_cloudless['chip_id']))]
     train_y_cloudless = pd.DataFrame(data, columns=['chip_id', 'label_path'])
 
-    print(f"Number of cloudless chips is not overlapping with validation set is {len(train_x_cloudless)}")
+    print(f"Number of cloudless chips from original locations not overlapping with validation set is {len(train_x_cloudless)}")
 
     if params['verbose']: print(train_y_cloudless.head(), train_y_cloudless.tail())
     
+    
+    ### NOW ADD CLOUDLESS CHIPS FROM NEW LOCATIONS
+    all_chips = sorted(glob.glob(str(DATA_DIR_CLOUDLESS_NEW_LOCATIONS) + '/*'))
+    
+    num_cloudless_chips = params['num_cloudless_chips_new_locations']
+    if num_cloudless_chips < 0:
+        num_cloudless_chips = len(all_chips)
+        
+    # choose chip (locations) to use
+    chips_use = np.random.choice(all_chips, size=num_cloudless_chips, replace=False)
+    
+    train_x_cloudless_new_locations = []
+    for ichip, chip in enumerate(chips_use):
+        if params['verbose'] and ichip % 1000==0: print(ichip)
+        
+        chip_id = f"{os.path.basename(chip)}"
+        feature_cols = [chip + f"/{band}.tif" for band in params['bands_use']]
+        train_x_cloudless_new_locations.append([chip_id]+feature_cols)
+ 
+    train_x_cloudless_new_locations = pd.DataFrame(train_x_cloudless_new_locations, columns=df_val.columns)
+
+    # add new cloudless images to train_y_new
+    data = np.c_[np.array(train_x_cloudless_new_locations['chip_id']),
+                 np.array(['cloudless']*len(train_x_cloudless_new_locations['chip_id']))]
+    train_y_cloudless_new_locations = pd.DataFrame(data, columns=['chip_id', 'label_path'])
+
+    print(f"Number of cloudless chips from new locations is {len(train_x_cloudless_new_locations)}")
+
+    train_x_cloudless = train_x_cloudless.append(train_x_cloudless_new_locations, ignore_index=True)
+    train_y_cloudless = train_y_cloudless.append(train_y_cloudless_new_locations, ignore_index=True)
+
+    print(f"Total number of cloudless chips from original and new locations is {len(train_x_cloudless)}")
+
     return train_x_cloudless, train_y_cloudless
 
 def split_train_val(df, params):
@@ -156,6 +200,19 @@ def split_train_val(df, params):
         print("Train, val, total shape = ", train.shape, val.shape, train.shape[0]+val.shape[0])
         train = train[~train["chip_id"].isin(EASY_CHIP_IDS)].reset_index(drop=True)
         print("After easy chip removal: Train, val, total shape = ", train.shape, val.shape, train.shape[0]+val.shape[0])
+    
+        # subsample good predictions from previous_model
+        # remove chips that had good performance in previus model (leaving desert, water, etc...)
+        if params['subsample_best_pred_chips']:
+            chip_ids_worst_preds = np.loadtxt("../data/BAD_CHIP_DATA/worst_preds_chip_ids.txt", dtype=str)
+            scale_worst_preds = np.loadtxt("../data/BAD_CHIP_DATA/worst_preds_int-union.txt", dtype=float)
+
+            chip_ids_good_pred = chip_ids_worst_preds[scale_worst_preds < params['good_pred_maximum']]
+            num_good_pred_chips_remove = int( (1-params['good_pred_frac_keep']) * len(chip_ids_good_pred))
+            chip_ids_good_pred_remove = np.random.choice(chip_ids_good_pred, size=num_good_pred_chips_remove, replace=False)
+
+            train = train[~train["chip_id"].isin(chip_ids_good_pred_remove)].reset_index(drop=True)
+            print("After good pred removal: Train, val, total shape = ", train.shape, val.shape, train.shape[0]+val.shape[0])
 
         # separate features from labels
         feature_cols = ["chip_id"] + [f"{band}_path" for band in params['bands_use']]
@@ -211,11 +268,29 @@ def main():
                         help="Construct an additional dataframe of cloudless") 
     
     parser.add_argument("--num_cloudless_chips", type=int, default=-1,
-                        help="Number of cloudless samples to include") 
+                        help="Number of cloudless samples to include")
     
+    parser.add_argument("--num_cloudless_chips_new_locations", type=int, default=1000,
+                        help="Number of cloudless samples from new locations not in original training to include") 
+        
     parser.add_argument("--dont_save_to_disk", action="store_true",
-                        help="save training and validation sets to disk") 
+                        help="save training and validation sets to disk")
     
+    parser.add_argument("--select_worst_pred_chips", action="store_true",
+                        help="Use chips that had predctions worse than bad_pred_minimum")
+                                             
+    parser.add_argument("--subsample_best_pred_chips", action="store_true",
+                        help="Subsample chips that had predictions better than good_pred_maximum") 
+        
+    parser.add_argument("--bad_pred_minimum", type=float, default=0.2,
+                        help="Only use cloudless chips that predictions off by more than this amount") 
+
+    parser.add_argument("--good_pred_maximum", type=float, default=0.1,
+                        help="Subsample original chips that predictions better than than this amount") 
+
+    parser.add_argument("--good_pred_frac_keep", type=float, default=0.25,
+                        help="Subsample original chip frac") 
+
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="increase output verbosity")
    

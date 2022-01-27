@@ -5,32 +5,41 @@ from pathlib import Path
 import tqdm
 from joblib import load
 import argparse
+import multiprocessing
+
 from cloud_seg.io.features import *
 
 NPIX_SIDE = 512
 REFBAND = 'B04'
 
-def feature_classification(args=None):
-    data_dir, prediction_dir = load_data_parameters(args)
-    model_path, model_name, feature_list = load_model_parameters(args)
+def feature_classification(image_id):
+    image_features = Features(set_type='val', file_name=image_id, data_dir=data_dir)
+    for feature in feature_list:
+        image_features.add(feature)
 
-    if not prediction_dir.exists():
-        prediction_dir.mkdir()
-    if not (prediction_dir/model_name).exists():
-        shutil.copyfile(model_path, prediction_dir/model_name)
+    predictions = clf.predict(image_features.get_values())
+            
+    predictions = predictions.reshape(-1, 512, 512)
+    np.save(prediction_dir/f'preds_gbm_{image_id}.npy', predictions)
+    
 
-    image_ids = input_image_ids(data_dir, REFBAND)
-    clf = load(model_path)
+def run_feature_classification(args=None):
 
-    for image_id in tqdm.tqdm(image_ids):
-        image_features = Features(set_type='val', file_name=image_id, data_dir=data_dir)
-        for feature in feature_list:
-            image_features.add(feature)
+    if args.max_pool_size <= 1:
+        for image_id in tqdm.tqdm(image_ids):
+            feature_classification(image_id)
 
-        predictions = clf.predict(image_features.get_values())
+    else:
+        # Simple threading with pool and .map                                                    
+        cpus = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(cpus if cpus < args.max_pool_size else args.max_pool_size)
+        print(f"Number of available cpus = {cpus}")
 
-        predictions = predictions.reshape(-1, 512, 512)
-        np.save(prediction_dir/f'preds_{image_id}.npy', predictions)
+        pool.map(feature_classification, image_ids)
+
+        pool.close()
+        pool.join()
+
 
 def get_image_id(image: str):
     return re.findall(
@@ -97,10 +106,27 @@ def parse_commandline_arguments() -> "argparse.Namespace":
         type=str,
         help='the names of the features used in the model, in order',
         default = ['B04', 'B03-B11', 'B08-B04', 'B08/B03', 'B02/B11', 'B08/B11', 'B02/B04'])
+    parser.add_argument(
+        '--max_pool_size',
+        type=int,
+        default=1,
+        )
 
     args = parser.parse_args()
     return args
 
+ARGS = parse_commandline_arguments()
+args = ARGS
+data_dir, prediction_dir = load_data_parameters(args)
+model_path, model_name, feature_list = load_model_parameters(args)
+
+if not prediction_dir.exists():
+    prediction_dir.mkdir()
+if not (prediction_dir/model_name).exists():
+    shutil.copyfile(model_path, prediction_dir/model_name)
+
+image_ids = input_image_ids(data_dir, REFBAND)
+clf = load(model_path)
+
 if __name__ == '__main__':
-    ARGS = parse_commandline_arguments()
-    feature_classification(ARGS)
+    run_feature_classification(ARGS)
