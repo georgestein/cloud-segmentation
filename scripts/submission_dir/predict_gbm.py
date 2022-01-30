@@ -1,9 +1,13 @@
 from joblib import load
 from loguru import logger
 import torch
-from PIL import Image
 from scipy.ndimage import gaussian_filter
 import numpy as np
+
+try:
+    from cloud_seg.models.unet.cloud_dataset import CloudDataset
+except ImportError:
+    from cloud_dataset import CloudDataset
 
 torch.set_grad_enabled(False)
 
@@ -22,15 +26,16 @@ def set_gbm_params() -> dict:
     return gbm_params
 
 def make_gbm_predictions(x_paths: "pandas.DataFrame", predictions_dir: "os.pathlike"):
-    "Generate and save predictions for each chip using the gbm model."
+    """Generate and save predictions for each chip using the gbm model."""
     params = set_gbm_params()
-    
+
     clf = load(params['model_path'])
 
     dataloader = get_dataloader(x_paths, params)
 
     for batch_index, batch in enumerate(dataloader):
-        logger.debug(f"Predicting batch {batch_index} of {len(test_dataloader)} with {MODEL_PATH}")
+        logger.debug(f"Predicting batch {batch_index} of {len(dataloader)} with "
+                     f"{params['model_path']}")
 
         x = batch["chip"] # float32 array, NCHW, is this numpy?
 
@@ -40,16 +45,17 @@ def make_gbm_predictions(x_paths: "pandas.DataFrame", predictions_dir: "os.pathl
             chip_pred_path = predictions_dir/f"{chip_id}_gbm.npy"
             np.save(chip_pred_path, pred)
 
-def feature_classification(batch: np.ndarray, clf: "sklearn.GradientBoostingClassifier", params: dict):
+def feature_classification(batch: np.ndarray, clf: "sklearn.GradientBoostingClassifier",
+                           params: dict):
     batch_size = params['batch_size']
     nfeatures = params['nfeatures']
     npix_side = params['npix_side']
 
     batch = batch.reshape(batch_size, nfeatures, npix_side*npix_side)
-    batch = np.swapaxes(batch, (1, 2))
+    batch = np.swapaxes(batch, 1, 2)
 
     predictions = clf.predict(batch)
-            
+
     predictions = predictions.reshape(batch_size, npix_side, npix_side)
 
     predictions = smooth_predictions(predictions)
@@ -58,8 +64,8 @@ def feature_classification(batch: np.ndarray, clf: "sklearn.GradientBoostingClas
 
 def smooth_predictions(predictions: np.ndarray) -> np.ndarray:
     predictions_smoothed = np.zeros(predictions.shape, np.float32)
-        for i in range(predictions.shape[0]):
-            predictions_smoothed[i, ...] = gaussian_filter(predictions[i, ...], 8)
+    for i in range(predictions.shape[0]):
+        predictions_smoothed[i, ...] = gaussian_filter(predictions[i, ...], 8)
     return predictions_smoothed
 
 def get_dataloader(x_paths: "pandas.DataFrame", params: dict) -> "torch.utils.data.DataLoader":
@@ -68,7 +74,7 @@ def get_dataloader(x_paths: "pandas.DataFrame", params: dict) -> "torch.utils.da
         bands=params['bands'],
         custom_features=params['model_features'],
         scale_feature_channels='custom')
-    
+
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=params['batch_size'],

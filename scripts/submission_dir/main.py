@@ -36,14 +36,14 @@ if os.environ['CONDA_DEFAULT_ENV'] == 'cloud-seg':
     ASSETS_DIR = ROOT_DIR / "assets"
     DATA_DIR = ROOT_DIR / "data"
     # INPUT_IMAGES_DIR = DATA_DIR / "test_features/"
-    
+
 else:
     ROOT_DIR = Path("/codeexecution")
     PREDICTIONS_DIR = ROOT_DIR / "predictions"
     ASSETS_DIR = ROOT_DIR / "assets"
     DATA_DIR = ROOT_DIR / "data"
     # INPUT_IMAGES_DIR = DATA_DIR / "test_features/"
-    
+
     # Set the pytorch cache directory and include cached models in your submission.zip
     os.environ["TORCH_HOME"] = str(ASSETS_DIR / "assets/torch")
 
@@ -65,9 +65,9 @@ def get_metadata(features_dir: os.PathLike, hparams):
     for chip_id in sorted(chip_ids):
         # chip_bands = [INPUT_IMAGES_DIR / chip_id / f"{band}.tif" for band in bands]
         if hparams['bands_new'] is not None:
-            chip_bands = [features_dir / chip_id / f"{band}.tif" if band not in hparams['bands_new'] else INPUT_IMAGES_DIR_NEW / chip_id / f"{band}.tif" for band in hparams['bands_use']] 
+            chip_bands = [features_dir / chip_id / f"{band}.tif" if band not in hparams['bands_new'] else INPUT_IMAGES_DIR_NEW / chip_id / f"{band}.tif" for band in hparams['bands_use']]
         else:
-            chip_bands = [features_dir / chip_id / f"{band}.tif" for band in hparams['bands_use']] 
+            chip_bands = [features_dir / chip_id / f"{band}.tif" for band in hparams['bands_use']]
 
         chip_metadata[chip_id] = chip_bands
 
@@ -99,7 +99,7 @@ def make_predictions(
         transforms=test_transforms,
         scale_feature_channels=model.scale_feature_channels,
     )
-    
+
     test_dataloader = torch.utils.data.DataLoader(
         test_dataset,
         batch_size=model.batch_size,
@@ -114,19 +114,19 @@ def make_predictions(
     for batch_index, batch in enumerate(test_dataloader):
         print("Running on batch: ", batch_index)
         logger.debug(f"Predicting batch {batch_index} of {len(test_dataloader)}")
-       
+
         x = batch["chip"]
         if model.gpu:
             x = x.cuda(non_blocking=True)
-        
+
         preds = model.forward(x)
         preds = torch.sigmoid(preds)
         preds = (preds > 0.5) * 1
         preds = preds.detach()
-        
+
         if model.gpu:
             preds = preds.to("cpu")
-            
+
         preds = preds.numpy()
         preds = preds.astype("uint8")
 
@@ -164,7 +164,7 @@ def main(
     predictions_dir.mkdir(exist_ok=True, parents=True)
 
     logger.info("Loading model")
-    
+
     hparams = np.load(hparams_path, allow_pickle=True).item()
     hparams['batch_size'] = 8
     hparams['weights'] = None
@@ -176,21 +176,21 @@ def main(
     )
 
     model.load_state_dict(torch.load(model_weights_path))
-    
+
     hparams['gpu'] = True
     if hparams['gpu']:
         model = model.cuda()
         model.gpu = True
 
-             
+
     # Load metadata
     logger.info("Loading metadata")
     metadata = get_metadata(test_features_dir, hparams)
     if fast_dev_run:
         metadata = metadata.head()
     logger.info(f"Found {len(metadata)} chips")
-    
-    
+
+
     # Make predictions and save to disk
     logger.info("Generating predictions in batches")
     make_predictions(model, metadata, hparams, predictions_dir)
