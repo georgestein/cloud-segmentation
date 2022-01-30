@@ -9,6 +9,7 @@ import pytorch_lightning as pl
 import glob
 from pathlib import Path
 from loguru import logger
+from predict_gbm import make_gbm_predictions
 
 from typing import List
 import typer
@@ -193,6 +194,7 @@ def main(
     # Make predictions and save to disk
     logger.info("Generating predictions in batches")
     make_predictions(model, metadata, hparams, predictions_dir)
+    make_gbm_predictions(metadata, predictions_dir)
 
     logger.info(f"""Saved {len(list(predictions_dir.glob("*.tif")))} predictions""")
 

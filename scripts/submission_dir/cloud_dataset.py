@@ -147,16 +147,20 @@ class CloudDataset(torch.utils.data.Dataset):
                 for ind, feature in enumerate(self.custom_features):
                     if feature == 'luminosity':
                         x_arr_out[..., ind] = band_normalizations.feder_scale(np.mean(x_arr, axis=-1))
-                    if '-' in feature:
+                    elif '-' in feature:
                         bi, bj = feature.split('-')
                         ind_bi = self.band_to_ind[bi]
                         ind_bj = self.band_to_ind[bj]
                         x_arr_out[..., ind] = (x_arr[..., ind_bi] - x_arr[..., ind_bj])/np.clip((x_arr[..., ind_bi] + x_arr[..., ind_bj]), 1, np.inf)
-                    if '/' in feature:
+                    elif '/' in feature:
                         bi, bj = feature.split('/')
                         ind_bi = self.band_to_ind[bi]
                         ind_bj = self.band_to_ind[bj]
                         x_arr_out[..., ind] = x_arr[..., ind_bi]/np.clip(x_arr[..., ind_bj], 1, np.inf)
+                    else:
+                        bi = feature
+                        ind_bi = self.band_to_ind[bi]
+                        x_arr_out[..., ind] = x_arr[..., ind_bi].copy()
                                                
                 x_arr = x_arr_out
                 
