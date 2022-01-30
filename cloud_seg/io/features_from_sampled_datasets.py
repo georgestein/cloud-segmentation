@@ -1,9 +1,8 @@
 from .features import sample_compiled_images
-from collections import LCClass
+from collections import namedtuple
 import random
 import os
 import numpy as np
-import random
 import subprocess
 
 NCHIPS_TRAIN = 11600
@@ -36,6 +35,8 @@ def create_compiled_dataset(bands, sample_by_LC=True, download=False):
 
     train_features = np.zeros((nfiles*100*PIX_SAMPLED_PER_IMAGE, nfeatures))
     train_labels = np.ones((nfiles*100*PIX_SAMPLED_PER_IMAGE))*255
+
+    lc_classes = get_lc_classes()
 
     random.seed(RANDOM_SEED)
 
@@ -91,8 +92,9 @@ def create_compiled_dataset(bands, sample_by_LC=True, download=False):
             for image_name in image_names:
                 os.remove(image_name)
             os.remove(label_name)
+            os.remove(LC_name)
 
-    print(f'{current_idx} pixels set out of {max_idx}')
+        print(f'{i}/{nfiles}: {current_idx} pixels set out of {max_idx}')
 
     train_features = train_features.reshape(-1, nfeatures)
     train_labels = train_labels.reshape(-1)
@@ -106,7 +108,7 @@ def download_file(file_name: str) -> None:
     p = subprocess.Popen(
         ['wget', f'{IMAGE_URL}{file_name}'],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    stdout, stderr = p.communicate()
+    stdout, stderr = p.communicate(timeout=60)
     if stderr is not None:
         print(stderr)
 
@@ -121,8 +123,6 @@ def create_chip_mask(bad_chip_path: str=BAD_CHIP_PATH, download: bool=False):
         chip_id_name = f'chip_ids_{i*100:06d}_{(i+1)*100:06d}.npy'
         if download:
             download_file(chip_id_name)
-        else:
-            chip_id_name = DATA_DIR/chip_id_name
 
         chip_ids = np.load(chip_id_name)
         for j, chip_id in enumerate(chip_ids):
@@ -148,5 +148,5 @@ def get_dominant_LC(LC_name):
     LC_per_pixel = np.load(LC_name)
     pixels_per_class = np.zeros(NUM_LC_CLASSES, dtype='uint8')
     for i in range(NUM_LC_CLASSES):
-        pixels_per_class[i] = (LC_per_pixel == i).count()
+        pixels_per_class[i] = (LC_per_pixel == i).sum()
     return np.argmax(pixels_per_class)
