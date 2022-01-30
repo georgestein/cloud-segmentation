@@ -104,6 +104,7 @@ def parse_commandline_arguments() -> "argparse.Namespace":
     parser.add_argument(
         '--model_features',
         type=str,
+        nargs='*',
         help='the names of the features used in the model, in order',
         default = ['B04', 'B03-B11', 'B08-B04', 'B08/B03', 'B02/B11', 'B08/B11', 'B02/B04'])
     parser.add_argument(
