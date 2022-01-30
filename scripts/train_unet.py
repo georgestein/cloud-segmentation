@@ -90,7 +90,7 @@ def main(args):
     model_out_name += f"_{hparams['encoder_name']}"
     model_out_name += f"_{hparams['loss_function']}"
     model_out_name += f"_{hparams['augmentations']}"
-    model_out_name += f"_customfeats_{hparams['custom_feature_channels']}"
+    model_out_name += f"_customfeats_{hparams['scale_feature_channels']}"
     model_out_name += f"_{curent_time}"
     model_out_name += f"_cv{hparams['cross_validation_split']}"
 
@@ -159,7 +159,11 @@ def main(args):
         cloud_transforms=cloud_transforms,
         hparams=hparams,
     )
-
+        
+    if hparams['load_checkpoint_path'] is not None:
+        cloud_model = cloud_model.load_from_checkpoint(hparams['load_checkpoint_path'])
+  
+        
     tb_logger = pl_loggers.TensorBoardLogger(
         save_dir=hparams['LOG_DIR'],
         name='log',
@@ -167,15 +171,15 @@ def main(args):
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=hparams['MODEL_DIR'],
-        filename='{epoch}-{val_iou_epoch:.4f}',
-        monitor="val_iou_epoch",
+        filename='{epoch}-{val_iou:.4f}',
+        monitor="val_iou",
         mode="max",
         verbose=True,
         save_last=True,
     )
 
     early_stopping_callback = pl.callbacks.early_stopping.EarlyStopping(
-        monitor="val_iou_epoch",
+        monitor="val_iou",
         patience=(cloud_model.patience * 3),
         mode="max",
         verbose=True,
@@ -314,19 +318,25 @@ if __name__=='__main__':
     parser.add_argument("--decoder_attention_type", type=none_or_str, default=None,
                         help="Attention in decoder")
     
-    parser.add_argument("--augmentations", type=str, default='vfrc',
+    parser.add_argument("--augmentations", type=str, default='vfhfrrtrrcbrgd',
                         help="training augmentations to use")
     
-    parser.add_argument("--cloud_augmentations", type=str, default='vfhfrrtr',
+    parser.add_argument("--cloud_augmentations", type=str, default='vfhfrrtrrcbrgd',
                         help="training augmentations to use for cloudmix")
         
     parser.add_argument("--cloud_augment", action="store_true",
                         help="Use cloud augmentation")
     
-    parser.add_argument("--custom_feature_channels", type=str, default=None,
-                        help="Transform from band values to others", choices=['feder_scale', 'true_color', 'log_bands', 'ratios'])
-
+    parser.add_argument("--scale_feature_channels", type=str, default=None,
+                        help="Transform from band values to others", choices=['feder_scale', 'true_color', 'log_bands', 'custom'])
     
+    parser.add_argument("--custom_features", nargs='+' , default=["luminosity", "B08-B04", "B03-B11", "B08/B03", "B02/B11", "B08/B11"],
+                        help="bands desired")
+    
+    parser.add_argument("--load_checkpoint_path", type=str, default=None,
+                        help="checkpoint path to initialize training from")
+
+  
     args = parser.parse_args()
     
     main(args)

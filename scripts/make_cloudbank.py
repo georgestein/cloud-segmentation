@@ -67,6 +67,9 @@ parser.add_argument("--extract_clouds", action="store_true",
 parser.add_argument("--cloud_extract_model", type=str, default='opacity',
                     help="Cloud model to use", choices=['opacity', 'additive']) 
 
+parser.add_argument("--brightness_correct_model", type=str, default=None,
+                    help="Brightness correcting model to use", choices=[None, 'median', 'mlp']) 
+
 parser.add_argument("--frac_all_cloud_keep", type=float, default=0.1,
                     help="Fraction of total cloud cover cloud chips to keep") 
 
@@ -117,7 +120,7 @@ def construct_cloudbank_dataframe(df_val, params: dict):
     # Remove cloud chips where mean(label)==0 (these are not cloud chips anyways)
     dm_no_cloud = labels_mean == 0.
 
-    # subsample chips where mean(label)==1
+    # Subsample chips where mean(label)==1
     dm_all_cloud = labels_mean == 1.
     all_cloud_chips = np.random.choice(
         cloud_chips[dm_all_cloud],
@@ -164,7 +167,7 @@ def save_dataframe_to_disk(df_meta, isplit, params: dict):
 
     df_meta.to_csv(DATA_DIR_OUT / file_name_out, index=False)
 
-def load_npz_arrays_for_chip(chip_id):
+def load_npz_arrays_for_chip(chip_id, params):
     
     cloudless_chip_dir = DATA_DIR_CLOUDLESS / chip_id
     images_cloudless_all = {}
@@ -232,12 +235,12 @@ def load_npz_arrays_for_chip(chip_id):
         
     return images_cloudless_all_matching       
 
-def save_npz_chip_arrays_to_tif(cloudless_dir):
+def save_npz_chip_arrays_to_tif(cloudless_dir, params):
     
     chip_id = os.path.basename(cloudless_dir)
     print(chip_id)
     
-    images_cloudless_all = load_npz_arrays_for_chip(chip_id)
+    images_cloudless_all = load_npz_arrays_for_chip(chip_id, params)
 
     for iimg in range(images_cloudless_all["B02"].shape[0]):
         band_diri = Path(DATA_DIR_CLOUDLESS_TIF / f"{chip_id}/{iimg}/")
@@ -254,9 +257,7 @@ def run_npz_chip_arrays_to_tif(params: dict):
     
     cloudless_dirs_all = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
     # check npz exists on disk
-    print(len(cloudless_dirs_all))
     cloudless_dirs_all = [i for i in cloudless_dirs_all if os.path.isfile(os.path.join(i,'B04.npz'))] 
-    print(len(cloudless_dirs_all))
 
     cloudless_dirs = []
 
@@ -280,8 +281,10 @@ def run_npz_chip_arrays_to_tif(params: dict):
     
     if params['max_pool_size'] <= 1:
         for cloudless_dir in cloudless_dirs:
-            save_npz_chip_arrays_to_tif(cloudless_dir)
-            
+            try:
+                save_npz_chip_arrays_to_tif(cloudless_dir, params)
+            except:
+                print(f"{cloudless_dir} has no matching")
     else:
         cpus = multiprocessing.cpu_count()
         pool = multiprocessing.Pool(cpus if cpus < params['max_pool_size'] else params['max_pool_size'])
@@ -306,18 +309,21 @@ def make_clouds(cloudless_dir):
     label = io.load_label(chip_id, TRAIN_LABELS)
 
     files = sorted(glob.glob(str(DATA_DIR_CLOUDLESS / chip_id / '*')))
-
+    
     try:
-        images_cloudless_all = load_npz_arrays_for_chip(params, chip_id)
+        images_cloudless_all = load_npz_arrays_for_chip(chip_id, params)
     except:
         return
     
+    print("EXTRACTING CLOUDS", chip_id)
+
     image_cloudless, clouds, opacity_mask = cloud_match.extract_clouds(
         params,
         image,
         label,
         images_cloudless_all,
         cloud_extract_model=params['cloud_extract_model'],
+        brightness_correct_model=params['brightness_correct_model'],
     )  
 
     band_diri = Path(DATA_DIR_CLOUDS / f"{chip_id}")

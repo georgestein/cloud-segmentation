@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+
 # from pytorch_lightning.utilities import rank_zero_only
 # @rank_zero_only
 class DisplayChipsCallback(Callback):  # pragma: no cover

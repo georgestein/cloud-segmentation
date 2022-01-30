@@ -11,12 +11,18 @@ import torchmetrics
 # from pytorch_lightning.utilities import rank_zero_only
 # from pytorch_lightning.loggers.base import rank_zero_experiment
 
-from .cloud_dataset import CloudDataset
-from .losses import intersection_and_union
-from .losses import dice_loss, power_jaccard
-from .plotting_tools import plot_prediction_grid
-
-
+try:
+    from .cloud_dataset import CloudDataset
+    from .losses import intersection_and_union
+    from .losses import dice_loss, power_jaccard
+    from .plotting_tools import plot_prediction_grid
+    
+except ImportError:
+    from cloud_dataset import CloudDataset
+    from losses import intersection_and_union
+    from losses import dice_loss, power_jaccard
+    from plotting_tools import plot_prediction_grid
+    
 class CloudModel(pl.LightningModule):
     def __init__(
         self,
@@ -60,14 +66,18 @@ class CloudModel(pl.LightningModule):
         # required
         self.bands = bands
         self.num_channels = len(bands)
-        
+
         # optional modeling params
         self.segmentation_model = self.hparams.get("segmentation_model", "unet")
-        self.encoder_name = self.hparams.get("encoder_name", "efficientnet-b0")
+        self.encoder_name = self.hparams.get("encoder_name", "resnet18")
         self.weights = self.hparams.get("weights", None)
         self.decoder_attention_type = self.hparams.get("decoder_attention_type", None)
-        self.custom_feature_channels = self.hparams.get("custom_feature_channels", None)
-                                                        
+        
+        self.scale_feature_channels = self.hparams.get("scale_feature_channels", None)
+        self.custom_features = self.hparams.get("custom_features", None)   
+        if self.scale_feature_channels == "custom":
+            self.num_channels = len(self.custom_features)
+        
         self.loss_function = self.hparams.get("loss_function", "BCE")        
         self.optimizer = self.hparams.get("optimizer", "ADAM")
         self.scheduler = self.hparams.get("scheduler", "PLATEAU")
@@ -77,7 +87,7 @@ class CloudModel(pl.LightningModule):
         self.T_0 = self.hparams.get("T_0", 10)
         self.eta_min = self.hparams.get("eta_min", 1e-5)
         
-        self.warmup_epochs = self.hparams.get("max_epochs", 10)
+        self.warmup_epochs = self.hparams.get("warmup_epochs", 10)
         self.max_epochs = self.hparams.get("max_epochs", 40)
 
         self.reduce_learning_rate_factor = self.hparams.get("reduce_learning_rate_factor", 0.1)
@@ -92,6 +102,7 @@ class CloudModel(pl.LightningModule):
         
         self.gpu = self.hparams.get("gpu", False)
         
+        self.log_on_epoch = self.hparams.get("log_on_epoch", True)
         self.log_on_step = self.hparams.get("log_on_step", False)
         self.progress_bar = self.hparams.get("progress_bar", False)
         
@@ -110,7 +121,8 @@ class CloudModel(pl.LightningModule):
             transforms=self.train_transform,
             cloudbank=cloudbank,
             cloud_transforms=self.cloud_transform,
-            custom_feature_channels=self.custom_feature_channels,
+            scale_feature_channels=self.scale_feature_channels,
+            custom_features=self.custom_features,
         )
         
         self.val_dataset = CloudDataset(
@@ -118,17 +130,57 @@ class CloudModel(pl.LightningModule):
             bands=self.bands,
             y_paths=y_val,
             transforms=self.val_transform,
-            custom_feature_channels=self.custom_feature_channels,
+            scale_feature_channels=self.scale_feature_channels,
+            custom_features=self.custom_features,
         )
         
         # define some performance metrics using torchmetrics
         # self.train_accuracy = torchmetrics.Accuracy()
         # self.val_intersection = mymetrics.Intersection()
-        self.val_IoU = torchmetrics.IoU(num_classes=2)
-        self.train_IoU = torchmetrics.IoU(num_classes=2)
+        try:
+            self.train_IoU = torchmetrics.JaccardIndex(num_classes=2)
+            self.val_IoU = torchmetrics.JaccardIndex(num_classes=2)
+
+            self.train_Recall = torchmetrics.Recall()#num_classes=2)#, average='samples')
+            self.val_Recall = torchmetrics.Recall()#num_classes=2)#, average='samples')
+
+            self.train_Precision = torchmetrics.Precision()#num_classes=2)#, average='samples')
+            self.val_Precision = torchmetrics.Precision()#num_classes=2)#, average='samples')
+
+            self.train_F1Score = torchmetrics.F1Score()#num_classes=2)#, average='samples')
+            self.val_F1Score = torchmetrics.F1Score()#num_classes=2)#, average='samples')
+
+            self.train_Specificity = torchmetrics.Specificity()#num_classes=2)#, average='samples')
+            self.val_Specificity = torchmetrics.Specificity()#num_classes=2)#, average='samples')
+
+        except:
+            # torchmetrics changed names in recent versions
+            # Train/validate wont work, but forward will
+            self.val_IoU = None
+            self.train_IoU = None
+ 
+            self.train_Recall = None
+            self.val_Recall = None
+            
+            self.train_Precision = None
+            self.val_Precision = None
+
+            self.train_F1Score = None
+            self.val_F1Score = None
+
+            self.train_Specificity = None
+            self.val_Specificity = None
 
         self.model = self._prepare_model()
-
+        
+    def add_to_log(self, log_string, log_value):
+        self.log(
+            log_string, log_value,
+            on_step=self.log_on_step,
+            on_epoch=self.log_on_epoch,
+            prog_bar=self.progress_bar,
+        )
+        
     ## Required LightningModule methods ##
     def forward(self, image: torch.Tensor):
         """
@@ -185,30 +237,27 @@ class CloudModel(pl.LightningModule):
         
         if self.loss_function != 'BCE':
             loss = self.calculate_loss(x, y, preds)
-
-        preds = (preds > 0.5) * 1  # convert to int
+        
+        # Log some tracking params
+        # self.model.eval()
+        # torch.set_grad_enabled(False)
+   
+        # preds = (preds > 0.5) * 1  # convert to int
 
         # batch_intersection, batch_union = intersection_and_union(preds, y)
-    
-        self.train_IoU(preds, y)
 
-        self.log(
-            "train_performance", 
-            {"iou": self.train_IoU},
-            on_step=self.log_on_step,
-            on_epoch=True,
-            prog_bar=self.progress_bar,
-        )
-        self.log(
-            "train_loss",
-            loss,
-            on_step=self.log_on_step,
-            on_epoch=True,
-            prog_bar=self.progress_bar,
-        )
+        self.train_IoU(preds, y)
+        self.train_Recall(preds, y) 
+        self.train_Precision(preds, y)
+        self.train_F1Score(preds, y)
+        self.train_Specificity(preds, y)
         
-        # keep seperate to use for early stopping
-        self.log("train_iou", self.train_IoU, on_step=True, on_epoch=True, prog_bar=self.progress_bar)
+        self.add_to_log("train_iou", self.train_IoU)
+        self.add_to_log("train_Recall", self.train_Recall)
+        self.add_to_log("train_Precision", self.train_Precision)
+        self.add_to_log("train_F1Score", self.train_F1Score)
+        self.add_to_log("train_Specificity", self.train_Specificity)
+        self.add_to_log("train_loss", loss)
 
         return loss
 
@@ -242,7 +291,7 @@ class CloudModel(pl.LightningModule):
         loss = self.calculate_loss(x, y, preds)
 
         preds = torch.sigmoid(preds)
-        preds = (preds > 0.5) * 1  # convert to int
+        # preds = (preds > 0.5) * 1  # convert to int
 
         if self.plot_validation_images:
             # keep to pass to validation_epoch_end and plot
@@ -252,17 +301,20 @@ class CloudModel(pl.LightningModule):
             self.last_chip_id = chip_id
 
         # Log batch IOU
-        batch_intersection, batch_union = intersection_and_union(preds, y)
+        # batch_intersection, batch_union = intersection_and_union(preds, y)
         self.val_IoU(preds, y)
-
-        self.log("val_performance", 
-                 {"iou": self.val_IoU},
-                 on_step=self.log_on_step, on_epoch=True, prog_bar=self.progress_bar)
-                 
-        self.log("val_loss", loss, on_step=self.log_on_step, on_epoch=True, prog_bar=self.progress_bar)
+        self.val_Recall(preds, y) 
+        self.val_Precision(preds, y)
+        self.val_F1Score(preds, y)
+        self.val_Specificity(preds, y)
         
-        # keep seperate to use for early stopping
-        self.log("val_iou", self.val_IoU, on_step=True, on_epoch=True, prog_bar=self.progress_bar)
+        self.add_to_log("val_iou", self.val_IoU)
+        self.add_to_log("val_Recall", self.val_Recall)
+        self.add_to_log("val_Precision", self.val_Precision)
+        self.add_to_log("val_F1Score", self.val_F1Score)
+        self.add_to_log("val_Specificity", self.val_Specificity)
+        self.add_to_log("val_loss", loss)
+
 
         return {"loss": loss}#, "x": x, "y": y, "pred": preds}
 
@@ -286,7 +338,7 @@ class CloudModel(pl.LightningModule):
                                                      self.last_y,
                                                      self.last_pred,
                                                      self.last_chip_id,
-                                                     custom_feature_channels=self.custom_feature_channels,
+                                                     scale_feature_channels=self.scale_feature_channels,
                                                      num_images_plot=self.num_images_plot,
                                                  ),
                                               self.current_epoch,

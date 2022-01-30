@@ -1,3 +1,4 @@
+
 import shutil
 import numpy as np
 import pandas as pd
@@ -18,7 +19,7 @@ import argparse
 import albumentations as A
 
 from cloud_seg.models.unet.cloud_model import CloudModel
-from cloud_seg.models.unet.cloud_model import CloudDataset
+from cloud_seg.models.unet.cloud_dataset import CloudDataset
 from cloud_seg.utils.augmentations import CloudAugmentations
 
 
@@ -35,7 +36,7 @@ parser.add_argument("-cv", "--cross_validation_split", type=int, default=0,
 parser.add_argument("--batch_size", type=int, default=8,
                     help="Batch size for model inference")
 
-parser.add_argument("--INPUT_DIR", type=str, default='../trained_models/unet/4band_originaldata_resnet34_jaccard_vfhfrrtrrc_customfeats_feder_scale_2022-01-24/',
+parser.add_argument("--INPUT_DIR", type=str, default='../trained_models/unet/4band_originaldata_efficientnet-b0_dice__Normalize_VerticalFlip_HorizontalFlip_RandomRotate90/',
                     help="Directory to save logs and trained models model")
 
 parser.add_argument("--LOG_DIR", type=str, default='logs/',
@@ -68,7 +69,7 @@ parser.add_argument("--encoder_name", type=str, default='resnet18',
 parser.add_argument("--load_checkpoint", action="store_true",
                     help="Whether loading weights from checkpoint (.ckpt) or just from saved weights state_dict (.pt)")
     
-parser.add_argument("--custom_feature_channels", type=str, default=None,
+parser.add_argument("--scale_feature_channels", type=str, default=None,
                     help="Transform from band values to others", choices=['feder_scale', 'true_color', 'log_bands', 'ratios'])
 
 parser.add_argument("--augmentations", type=str, default='',
@@ -181,7 +182,7 @@ def make_predictions(
         x_paths=x_paths,
         bands=bands,
         transforms=predict_transforms,
-        custom_feature_channels=model.custom_feature_channels,
+        scale_feature_channels=model.scale_feature_channels,
     )
     
     predict_dataloader = torch.utils.data.DataLoader(

@@ -288,7 +288,7 @@ def main():
     parser.add_argument("--good_pred_maximum", type=float, default=0.1,
                         help="Subsample original chips that predictions better than than this amount") 
 
-    parser.add_argument("--good_pred_frac_keep", type=float, default=0.25,
+    parser.add_argument("--good_pred_frac_keep", type=float, default=0.5,
                         help="Subsample original chip frac") 
 
     parser.add_argument("-v", "--verbose", action="store_true",

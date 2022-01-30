@@ -1,4 +1,6 @@
 import albumentations as A
+from albumentations.core.transforms_interface import ImageOnlyTransform
+
 import numpy as np
 import sys
 
@@ -9,9 +11,14 @@ class CloudAugmentations:
         self.min_max_crop = params.get('min_max_crop', [int(512//3*2), 512])
         self.aug_prob_soft = params.get('aug_prob_soft', 0.5) # soft augmentations. e.g. rotate, flip, ...
         self.aug_prob_medium = params.get('aug_prob_medium', 0.8) # random rescale, etc
-        self.aug_prob_hard = params.get('aug_prob_hard', 0.2) # grid distortion, etc
-        
-        # Dictionary to convert between abbreviation and full augmentation string                              
+        self.aug_prob_hard = params.get('aug_prob_hard', 0.5) # grid distortion, etc
+
+        self.grid_distort_limit = params.get('grid_distort_limit', 0.3)
+
+        self.sigma_brightness = params.get('sigma_brightness', 0.1)
+        self.per_channel_brightness = params.get('per_channel_brightness', False)
+
+        # Dictionary to convert between abbreviation and full augmentation string
         self.aug_to_name = {
             'vf': 'VerticalFlip',
             'hf': 'HorizontalFlip',
@@ -20,6 +27,7 @@ class CloudAugmentations:
             'rc': 'RandomSizedCrop',
             'gd': 'GridDistortion',
             'gb': 'GaussianBlur',
+            'br': 'Brightness',
             'nr': 'Normalize',
             # 'ss': 'SizeScale',
             # 'gb': 'GaussianBlur',
@@ -34,6 +42,7 @@ class CloudAugmentations:
             'rc': self.add_RandomSizedCrop,
             'gd': self.add_GridDistortion,
             'gb': self.add_GaussianBlur,
+            'br': self.add_Brightness,
             'nr': self.add_Normalize,
             # 'ss': self.add_SizeScale,
             # 'gb': self.add_GaussianBlur,
@@ -73,11 +82,26 @@ class CloudAugmentations:
         )
     def add_GridDistortion(self):
         self.augmentations_names.append(self.aug_to_name['gd'])
-        self.augmentations.append(A.GridDistortion(p=self.aug_prob_hard))
+        self.augmentations.append(
+            A.GridDistortion(
+                p=self.aug_prob_hard,
+                distort_limit=self.grid_distort_limit,
+            )
+        )
 
     def add_GaussianBlur(self):
         self.augmentations_names.append(self.aug_to_name['gb'])
         self.augmentations.append(A.GaussianBlur(p=self.aug_prob_hard))
+
+    def add_Brightness(self):
+        self.augmentations_names.append(self.aug_to_name['br'])
+        self.augmentations.append(
+            ModifyBrightness(
+                sigma_brightness=self.sigma_brightness,
+                per_channel=self.per_channel_brightness,
+                p=self.aug_prob_medium,
+            )
+        )
 
     def add_Normalize(self):
         self.augmentations_names.append(self.aug_to_name['nr'])
@@ -94,7 +118,7 @@ class CloudAugmentations:
         self.augmentations = []
         self.augmentations_names = []
 
-        # split every two characters                                                                           
+        # split every two characters     
         if augs_manual is None:
             augmentations_use = self.params['augmentations']
         if augs_manual is not None:
@@ -112,3 +136,42 @@ class CloudAugmentations:
             print(f"\nUsing augmentations \n{self.augmentations_names}\n {self.augmentations}")
 
         return self.augmentations, self.augmentations_names
+
+
+
+class ModifyBrightness(ImageOnlyTransform):
+    """
+    Scales brightness by multiplying image by a random draw with sigma=sigma_brightness, mean=1
+    """
+    def __init__(self, sigma_brightness=0.1, uniform=False, per_channel=False, 
+                 always_apply=False, p=0.5):
+        super(ModifyBrightness, self).__init__(always_apply, p)
+        
+        self.sigma_brightness = sigma_brightness
+        self.uniform = uniform
+        self.mean_brightness = 1.
+        self.p = p
+        self.per_channel = per_channel
+        
+ 
+    def apply(self, img, **params):
+        if np.random.uniform() > self.p:
+            # Don't apply
+            return img
+        
+        nsamples = 1
+        if self.per_channel:
+            nsamples = img.shape[-1]
+            
+        # draw 'true' noise level of each channel from lognormal fits
+        if not self.uniform:
+            amplitude_i = np.random.normal(self.mean_brightness, self.sigma_brightness, size=nsamples)
+        if self.uniform:
+            amplitude_i = np.random.uniform(
+                self.mean_brightness-self.sigma_brightness,
+                self.mean_brightness+self.sigma_brightness,
+                size=nsamples
+            )
+        
+        return img * amplitude_i
+

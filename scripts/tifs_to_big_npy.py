@@ -37,8 +37,8 @@ DATA_DIR_CLOUDLESS = DATA_DIR / 'cloudless/'
 DATA_DIR_CLOUDLESS_MOST_SIMILAR = DATA_DIR / 'cloudless_most_similar/'
 DATA_DIR_CLOUDLESS_TIF = DATA_DIR / 'cloudless_tif/'
 
-#DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
-DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/"
+DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
+DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/sorted/"
 # DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
 
 # PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
@@ -116,8 +116,16 @@ if params['bands_new'] is not None:
 params['nchunks'] = math.ceil(len(df_meta)/params['chunksize'])
 params['max_pool_size'] = min(params['nchunks'], params['max_pool_size'])
 
-# sort meta by predictions
+# Sort by bad predictions:
+worst_chip_ids = np.loadtxt("../data/BAD_CHIP_DATA/worst_preds_gbm_chip_ids.txt", dtype=str)
+worst_int_union = np.loadtxt("../data/BAD_CHIP_DATA/worst_preds_gbm_int-union.txt", dtype=float)
 
+print(len(worst_chip_ids), len(df_meta))
+print(df_meta.head(), worst_chip_ids[:5])
+df_meta['pred_score'] = worst_int_union
+
+df_meta = df_meta.sort_values(by='pred_score', ascending=False)
+print(df_meta.head(), worst_chip_ids[:5])
 
 def intersection_and_union(pred, true):
     """                                                                                                         
@@ -323,7 +331,7 @@ def main():
     """
     
     if params['max_pool_size'] <= 1:
-        for i in range(1):#params['nchunks']):
+        for i in range(params['nchunks']):
             run_on_chunk(i)
             
     else:
