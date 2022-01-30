@@ -15,6 +15,7 @@ from typing import List
 import typer
 # import logging
 
+import sys
 import os
 import argparse
 
@@ -24,6 +25,7 @@ try:
     from cloud_seg.models.unet.cloud_model import CloudModel
     from cloud_seg.models.unet.cloud_dataset import CloudDataset
     from cloud_seg.utils.augmentations import CloudAugmentations
+    import pull_additional_chip_data
 except ImportError:
     from cloud_model import CloudModel
     from cloud_dataset import CloudDataset
@@ -36,6 +38,7 @@ if os.environ['CONDA_DEFAULT_ENV'] == 'cloud-seg':
     PREDICTIONS_DIR = ROOT_DIR / "predictions"
     ASSETS_DIR = ROOT_DIR / "assets"
     DATA_DIR = ROOT_DIR / "data"
+    DATA_DIR_NEW = ROOT_DIR / "data_new"
     # INPUT_IMAGES_DIR = DATA_DIR / "test_features/"
 
 else:
@@ -43,13 +46,17 @@ else:
     PREDICTIONS_DIR = ROOT_DIR / "predictions"
     ASSETS_DIR = ROOT_DIR / "assets"
     DATA_DIR = ROOT_DIR / "data"
+    DATA_DIR_NEW = ROOT_DIR / "data_new"
+
     # INPUT_IMAGES_DIR = DATA_DIR / "test_features/"
 
     # Set the pytorch cache directory and include cached models in your submission.zip
     os.environ["TORCH_HOME"] = str(ASSETS_DIR / "assets/torch")
 
 
-def get_metadata(features_dir: os.PathLike, hparams):
+def get_metadata(features_dir: os.PathLike,
+                 features_dir_new: os.PathLike,
+                 params):
     """
     Given a folder of feature data, return a dataframe where the index is the chip id
     and there is a column for the path to each band's TIF image.
@@ -58,27 +65,43 @@ def get_metadata(features_dir: os.PathLike, hparams):
         features_dir (os.PathLike): path to the directory of feature data, which should have
             a folder for each chip
     """
-    chip_metadata = pd.DataFrame(index=[f"{band}_path" for band in hparams['bands_use']])
+    chip_metadata = pd.DataFrame(index=[f"{band}_path" for band in params['bands_use']])
     chip_ids = (
         pth.name for pth in features_dir.iterdir() if not pth.name.startswith(".")
     )
 
     for chip_id in sorted(chip_ids):
         # chip_bands = [INPUT_IMAGES_DIR / chip_id / f"{band}.tif" for band in bands]
-        if hparams['bands_new'] is not None:
-            chip_bands = [features_dir / chip_id / f"{band}.tif" if band not in hparams['bands_new'] else INPUT_IMAGES_DIR_NEW / chip_id / f"{band}.tif" for band in hparams['bands_use']]
+        if params['bands_new'] is not None:
+            chip_bands = [features_dir / chip_id / f"{band}.tif" if band not in params['bands_new'] else features_dir_new / chip_id / f"{band}.tif" for band in params['bands_use']]
         else:
-            chip_bands = [features_dir / chip_id / f"{band}.tif" for band in hparams['bands_use']]
+            chip_bands = [features_dir / chip_id / f"{band}.tif" for band in params['bands_use']]
 
         chip_metadata[chip_id] = chip_bands
 
     return chip_metadata.transpose().reset_index().rename(columns={"index": "chip_id"})
 
+def compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, predictions_dir):
+    """
+    load in predictions for Unet and/or Boosting model(s),
+    and save to final prediction dir
+    """
+    for chip_id in metadata['chip_id']:
+        pred_unet = np.load(unet_predictions_dir / f"{chip_id}.npy")
+        pred_gbm  = np.load(gbm_predictions_dir / f"{chip_id}.npy")
 
+        pred_final = ( (pred_unet + pred_gbm)/2 >= 0.5)*1
+        pred_final = pred_final.astype("uint8")
+
+        chip_pred_path = predictions_dir / f"{chip_id}.tif"
+        chip_pred_im = Image.fromarray(pred_final)
+        chip_pred_im.save(chip_pred_path)
+        
 def main(
     model_weights_path = ASSETS_DIR / "cloud_model.pt",
-    hparams_path = ASSETS_DIR / "hparams.npy",
+    hparams_unet_path = ASSETS_DIR / "hparams.npy",
     test_features_dir: Path = DATA_DIR / "test_features",
+    test_features_dir_new: Path = DATA_DIR_NEW / "test_features_new",
     predictions_dir: Path = PREDICTIONS_DIR,
     fast_dev_run: bool = False,
 ):
@@ -102,50 +125,84 @@ def main(
         )
     predictions_dir.mkdir(exist_ok=True, parents=True)
 
-
-    # Pull additional bands B01 and B11
-    # By default saved to data_new/test_features_new
-    pull_additional_chip_data.main()
-
-    logger.info("Loading model")
-
-    # Load parameters for Unet
-    hparams = np.load(hparams_path, allow_pickle=True).item()
-    hparams['batch_size'] = 8
-    hparams['weights'] = None
-    # Load with gpu=False, then put on GPU
-    hparams['gpu'] = False
-
+    unet_predictions_dir = Path("data_new/predictions_unet")
+    unet_predictions_dir.mkdir(exist_ok=True, parents=True)
+    gbm_predictions_dir = Path("data_new/predictions_gbm")
+    gbm_predictions_dir.mkdir(exist_ok=True, parents=True)
 
     # Load metadata
+    params_metadata = {}
+    params_metadata['bands_use'] = ['B01', 'B02', 'B03', 'B04', 'B08', 'B11']
+    params_metadata['bands_new'] = ['B01', 'B11']
+
     logger.info("Loading metadata")
-    metadata = get_metadata(test_features_dir, hparams)
+    print(test_features_dir, test_features_dir_new)
+    metadata = get_metadata(
+        test_features_dir,
+        test_features_dir_new,
+        params_metadata,
+    )
+
+    print(metadata.head())
+    
     if fast_dev_run:
         metadata = metadata.head()
     logger.info(f"Found {len(metadata)} chips")
 
+    logger.info("Pulling additional data")
+    # Pull additional bands B01 and B11
+    # By default saved to data_new/test_features_new
+    for ithreaded_pull in range(2):
+        # run threaded pull a few times
+        try:
+            pull_additional_chip_data.main(max_pool_size=8)
+        except:
+            logger.info(f"Pulling threaded data {ithreaded_pull} to best of ability")
+
+    # pull data one final time with no threading
+    # this will skip already downloaded files and catch missing data from any threads that crashed
+    pull_additional_chip_data.main(max_pool_size=1)
+
+    logger.info("Checking new data downloaded properly")
+    ## ADD FUNCTION HERE
+    
+    
+    logger.info("Loading model")
+
+    # Load parameters for Unet
+    hparams_unet = np.load(hparams_unet_path, allow_pickle=True).item()
+    hparams_unet['batch_size'] = 8
+    hparams_unet['weights'] = None
+    # Load with gpu=False, then put on GPU
+    hparams_unet['gpu'] = False
+
 
     # Load unet model
     model = CloudModel(
-        bands=hparams['bands_use'],
-        hparams=hparams
+        bands=hparams_unet['bands_use'],
+        hparams=hparams_unet
     )
 
     model.load_state_dict(torch.load(model_weights_path))
 
-    hparams['gpu'] = True
-    if hparams['gpu']:
+    hparams_unet['gpu'] = True
+    if hparams_unet['gpu']:
         model = model.cuda()
         model.gpu = True
 
     # Make predictions and save to disk
-    logger.info("Generating predictions in batches")
+    logger.info("Generating U-Net predictions in batches")
     # predict image-based
-    make_unet_predictions(model, metadata, hparams, predictions_dir)
+    make_unet_predictions(model, metadata, hparams_unet, unet_predictions_dir)
+
+
+    logger.info("Generating GBM predictions in batches")
     # predict feature based
-    make_gbm_predictions(metadata, predictions_dir)
+    make_gbm_predictions(metadata, gbm_predictions_dir)
 
     # compile predictions from each model into final prediction
+    compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, predictions_dir)
+
     logger.info(f"""Saved {len(list(predictions_dir.glob("*.tif")))} predictions""")
 
 

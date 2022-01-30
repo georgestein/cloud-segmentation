@@ -83,9 +83,16 @@ def make_unet_predictions(
             preds = preds.to("cpu")
 
         preds = preds.numpy()
+
+        for chip_id, pred in zip(batch["chip_id"], preds):
+            chip_pred_path = predictions_dir / f"{chip_id}.npy"
+            np.save(chip_pred_path, pred.astype(np.float32))
+
+        '''
         preds = preds.astype("uint8")
 
         for chip_id, pred in zip(batch["chip_id"], preds):
             chip_pred_path = predictions_dir / f"{chip_id}.tif"
             chip_pred_im = Image.fromarray(pred)
             chip_pred_im.save(chip_pred_path)
+        '''

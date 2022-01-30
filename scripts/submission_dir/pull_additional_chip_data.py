@@ -43,8 +43,8 @@ else:
     label_str = 'test'
     
     # locations to various directories
-    DATA_DIR = "data/"
-    DATA_DIR_OUT = "data_new/"
+    DATA_DIR = Path("data/")
+    DATA_DIR_OUT = Path("data_new/")
     Path(DATA_DIR_OUT).mkdir(parents=True, exist_ok=True)
 
     BANDS_NEW = ['B01', 'B11']
@@ -145,7 +145,6 @@ else:
     DATA_DIR_OUT = DATA_DIR_OUT / "test_features_new/"
 
     params['new_bands'] = BANDS_NEW
-    params['max_pool_size'] = 8
     
 if params['new_band_dirs'] == []:
     # no specific output directories specified, default to band names
@@ -158,7 +157,6 @@ print(params)
 def download_assets(irow):
     
     row = df.iloc[irow]
-    
     pystac_chip = PystacAsset(params, df_chip=row)
     
     if not pystac_chip.exists_on_disk:
@@ -169,7 +167,7 @@ def download_assets(irow):
         pystac_chip.save_assets_to_disk()
         
         tend = time.time()
-        if irow % 10 == 0:
+        if irow % 100 == 0:
             
             print("Download time for chip was {:.03f} s".format(tend-tstart))
                 
@@ -212,6 +210,8 @@ class PystacAsset:
     def __init__(self, params, df_chip=None, lat_lon=None):
 
         self.df_chip = df_chip
+        self.lat_lon = lat_lon
+        
         if df_chip is not None:
             # load locations from alteady existing geotiff
             self.chip_id = df_chip.chip_id
@@ -300,16 +300,17 @@ class PystacAsset:
                             IMAGE_OUTSIZE,
                             order=INTERPOLATION_ORDER,
                         )
+                        
+                        band_diri = Path(self.DATA_DIR_OUT / f"{self.chip_id}")
+                        band_diri.mkdir(parents=True, exist_ok=True)
+                        
+                        band_image = Image.fromarray(self.assets[band])
+                        band_image.save(band_diri / f"{band_dir}.tif")  
+                        
                     except:
                         self.assets = {}
-                        print(f"Band {band} was not found or weird shape. Saving zeros instead")
-                        self.assets[band] = np.full(IMAGE_OUTSIZE, 0, dtype=np.uint8)
-
-                band_diri = Path(self.DATA_DIR_OUT / f"{self.chip_id}")
-                band_diri.mkdir(parents=True, exist_ok=True)
-                
-                band_image = Image.fromarray(self.assets[band])
-                band_image.save(band_diri / f"{band_dir}.tif")  
+                        print(f"Band {band} was not found or weird shape. Or thread being weird")
+                        #self.assets[band] = None #np.full(IMAGE_OUTSIZE, 0, dtype=np.uint8)
 
             else:
                 """
@@ -363,6 +364,7 @@ class PystacAsset:
                     max_cloud_shadow_cover=self.max_cloud_shadow_cover,
                     max_item_limit=self.max_item_limit,
                 )
+
             if self.lat_lon is not None:
                 # Load extra bands from PySTAC
                 self.assets, self.items = query_bands.query_bands_from_lat_lon(
@@ -384,7 +386,8 @@ class PystacAsset:
         if self.verbose: print('Got assets')
 
 
-def main():
+def main(max_pool_size=8):
+    params['max_pool_size'] = max_pool_size
 
     if not params['new_location']:
         if params['max_pool_size'] <= 1:
@@ -392,6 +395,7 @@ def main():
                 download_assets(i)
         else:
             cpus = multiprocessing.cpu_count()
+            params['max_pool_size'] = min(params['max_pool_size'], len(df))
             pool = multiprocessing.Pool(cpus if cpus < params['max_pool_size'] else params['max_pool_size'])
             print(f"Number of available cpus = {cpus}")
 

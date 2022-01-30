@@ -16,7 +16,7 @@ def set_gbm_params() -> dict:
     gbm_params = {
         'npix_side': 512,
         'model_path': './assets/gbm_modelI.joblib',
-        'bands': ['B04', 'B03', 'B08', 'B02', 'B11', 'B01'],
+        'bands_use': ['B04', 'B03', 'B08', 'B02', 'B11', 'B01'],
         'model_features': ['B04', 'B03-B11', 'B08-B04', 'B08/B03', 'B02/B11', 'B08/B11',
                           'B02/B04', 'B02/B03', 'B03/B01'],
         'batch_size': 8,
@@ -37,22 +37,23 @@ def make_gbm_predictions(x_paths: "pandas.DataFrame", predictions_dir: "os.pathl
         logger.debug(f"Predicting batch {batch_index} of {len(dataloader)} with "
                      f"{params['model_path']}")
 
-        x = batch["chip"] # float32 array, NCHW, is this numpy?
+        x = batch["chip"].numpy() # float32 array, NCHW, is this numpy?
 
         preds = feature_classification(x, clf, params)
 
         for chip_id, pred in zip(batch["chip_id"], preds):
-            chip_pred_path = predictions_dir/f"{chip_id}_gbm.npy"
+            chip_pred_path = predictions_dir/f"{chip_id}.npy"
             np.save(chip_pred_path, pred)
 
 def feature_classification(batch: np.ndarray, clf: "sklearn.GradientBoostingClassifier",
                            params: dict):
-    batch_size = params['batch_size']
+    batch_size = batch.shape[0]
     nfeatures = params['nfeatures']
     npix_side = params['npix_side']
 
     batch = batch.reshape(batch_size, nfeatures, npix_side*npix_side)
     batch = np.swapaxes(batch, 1, 2)
+    batch = batch.reshape(batch_size*npix_side*npix_side, nfeatures)
 
     predictions = clf.predict(batch)
 
@@ -71,7 +72,7 @@ def smooth_predictions(predictions: np.ndarray) -> np.ndarray:
 def get_dataloader(x_paths: "pandas.DataFrame", params: dict) -> "torch.utils.data.DataLoader":
     dataset = CloudDataset(
         x_paths=x_paths,
-        bands=params['bands'],
+        bands=params['bands_use'],
         custom_features=params['model_features'],
         scale_feature_channels='custom')
 
