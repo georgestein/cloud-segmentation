@@ -152,7 +152,9 @@ class ModifyBrightness(ImageOnlyTransform):
         self.mean_brightness = 1.
         self.p = p
         self.per_channel = per_channel
-        
+
+    def get_transform_init_args_names(self):
+        return ("sigma_brightness",)        
  
     def apply(self, img, **params):
         if np.random.uniform() > self.p:
