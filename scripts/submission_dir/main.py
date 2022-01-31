@@ -90,7 +90,6 @@ def compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, pre
     for chip_id in metadata['chip_id']:
         pred_unet = np.load(unet_predictions_dir / f"{chip_id}.npy")
         pred_gbm  = np.load(gbm_predictions_dir / f"{chip_id}.npy")
-        pred_gbm = (pred_gbm>0.1)*1
         
         pred_final = ( (pred_unet + pred_gbm)/2 >= 0.5)*1
         pred_final = pred_final.astype("uint8")

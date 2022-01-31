@@ -62,12 +62,15 @@ def feature_classification(batch: np.ndarray, clf: "sklearn.GradientBoostingClas
 
     predictions = smooth_predictions(predictions)
 
+
     return predictions
 
 def smooth_predictions(predictions: np.ndarray) -> np.ndarray:
     predictions_smoothed = np.zeros(predictions.shape, np.float32)
     for i in range(predictions.shape[0]):
         predictions_smoothed[i, ...] = gaussian_filter(predictions[i, ...], 8)
+    predictions_smoothed = predictions_smoothed*0.5
+    predictions_smoothed[predictions_smoothed > 1.] = 1.
     return predictions_smoothed
 
 def get_dataloader(x_paths: "pandas.DataFrame", params: dict) -> "torch.utils.data.DataLoader":
