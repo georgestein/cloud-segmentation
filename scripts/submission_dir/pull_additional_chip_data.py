@@ -167,6 +167,7 @@ def download_assets(irow):
         pystac_chip.save_assets_to_disk()
         
         tend = time.time()
+
         if irow % 100 == 0:
             
             print("Download time for chip was {:.03f} s".format(tend-tstart))
@@ -189,8 +190,9 @@ def download_location_assets(irow):
             pystac_chip.save_assets_to_disk()
         except:
             print("no chips to save")
+
         tend = time.time()
-        if irow % 10 == 0:
+        if irow % 100 == 0:
             print("Download time for chip was {:.03f} s".format(tend-tstart))
 
 def index_to_chip_string(index, nchars_per_string=4):
@@ -308,8 +310,9 @@ class PystacAsset:
                         band_image.save(band_diri / f"{band_dir}.tif")  
                         
                     except:
-                        self.assets = {}
-                        print(f"Band {band} was not found or weird shape. Or thread being weird")
+                        a = None
+                        #self.assets = {}
+                        #print(f"Band {band} was not found or weird shape. Or thread being weird")
                         #self.assets[band] = None #np.full(IMAGE_OUTSIZE, 0, dtype=np.uint8)
 
             else:
@@ -380,7 +383,7 @@ class PystacAsset:
                     max_item_limit=self.max_item_limit,
                 )                
         except:
-            print(f"{self.chip_id} sucks and we can't find it")
+            #print(f"{self.chip_id} sucks and we can't find it")
             self.bad_chip = True
             
         if self.verbose: print('Got assets')

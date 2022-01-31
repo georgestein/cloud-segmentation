@@ -34,8 +34,9 @@ def make_gbm_predictions(x_paths: "pandas.DataFrame", predictions_dir: "os.pathl
     dataloader = get_dataloader(x_paths, params)
 
     for batch_index, batch in enumerate(dataloader):
-        logger.debug(f"Predicting batch {batch_index} of {len(dataloader)} with "
-                     f"{params['model_path']}")
+        if batch_index % 100 == 0:
+            logger.debug(f"Predicting batch {batch_index} of {len(dataloader)} with "
+                         f"{params['model_path']}")
 
         x = batch["chip"].numpy() # float32 array, NCHW, is this numpy?
 

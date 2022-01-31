@@ -8,7 +8,6 @@ import pytorch_lightning as pl
 import glob
 from pathlib import Path
 from loguru import logger
-from predict_gbm import make_gbm_predictions
 
 from typing import List
 import typer
@@ -67,8 +66,9 @@ def make_unet_predictions(
     torch.set_grad_enabled(False)
     model.eval()
     for batch_index, batch in enumerate(test_dataloader):
-        print("Running on batch: ", batch_index)
-        logger.debug(f"Predicting batch {batch_index} of {len(test_dataloader)}")
+
+        if batch_index % 100 == 0:
+            logger.debug(f"Predicting batch {batch_index} of {len(test_dataloader)}")
 
         x = batch["chip"]
         if model.gpu:

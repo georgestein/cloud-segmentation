@@ -18,6 +18,7 @@ import typer
 import sys
 import os
 import argparse
+import glob
 
 import albumentations as A
 
@@ -89,14 +90,15 @@ def compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, pre
     for chip_id in metadata['chip_id']:
         pred_unet = np.load(unet_predictions_dir / f"{chip_id}.npy")
         pred_gbm  = np.load(gbm_predictions_dir / f"{chip_id}.npy")
-
+        pred_gbm = (pred_gbm>0.1)*1
+        
         pred_final = ( (pred_unet + pred_gbm)/2 >= 0.5)*1
         pred_final = pred_final.astype("uint8")
 
         chip_pred_path = predictions_dir / f"{chip_id}.tif"
         chip_pred_im = Image.fromarray(pred_final)
         chip_pred_im.save(chip_pred_path)
-        
+
 def main(
     model_weights_path = ASSETS_DIR / "cloud_model.pt",
     hparams_unet_path = ASSETS_DIR / "hparams.npy",
@@ -152,7 +154,7 @@ def main(
     logger.info("Pulling additional data")
     # Pull additional bands B01 and B11
     # By default saved to data_new/test_features_new
-    for ithreaded_pull in range(2):
+    for ithreaded_pull in range(10):
         # run threaded pull a few times
         try:
             pull_additional_chip_data.main(max_pool_size=8)
@@ -163,9 +165,20 @@ def main(
     # this will skip already downloaded files and catch missing data from any threads that crashed
     pull_additional_chip_data.main(max_pool_size=1)
 
-    logger.info("Checking new data downloaded properly")
     ## ADD FUNCTION HERE
-    
+    new_chip_dirs = sorted(glob.glob("data_new/test_features_new/*"))
+    logger.info(f"New bands downloaded properly? {len(new_chip_dirs)} dirs in data_new/test_features_new")
+    num_missing = 0
+    for chip_id in metadata['chip_id']:
+        exists_on_disk = True
+        for band in params_metadata['bands_new']:
+            if not os.path.isfile(f"data_new/test_features_new/{chip_id}/{band}.tif"):
+                exists_on_disk = False
+
+        if not exists_on_disk:
+            num_missing+=1
+            
+    logger.info(f"{num_missing} new bands missing")
     
     logger.info("Loading model")
 
