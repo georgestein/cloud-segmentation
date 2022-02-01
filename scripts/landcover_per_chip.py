@@ -20,7 +20,7 @@ def landcover_per_chip(data_dir: os.PathLike):
         landcover = np.load(data_dir/f'LC_{start_idx:06d}_{end_idx:06d}.npy')
         landcover = landcover.reshape(chip_ids.shape[0], 512*512)
 
-        pixels_per_class = np.zeros((landcover.shape[0], len(lc_classes)), dtype='uint8')
+        pixels_per_class = np.zeros((landcover.shape[0], len(lc_classes)), dtype=np.int)
         for i, lc_class in enumerate(lc_classes):
             pixels_per_class[:, i] = (landcover == i).sum(-1)
 
