@@ -13,6 +13,7 @@ import os
 import datetime
 
 from pytorch_lightning import loggers as pl_loggers
+from pytorch_lightning.plugins import DDPPlugin
 import albumentations as A
 
 from cloud_seg.models.unet.cloud_model import CloudModel
@@ -189,6 +190,13 @@ def main(args):
         logging_interval='epoch'
     )
 
+    if hparams['strategy'] == 'ddp':
+        strategy = DDPPlugin(find_unused_parameters=False)
+    else:
+        strategy = hparams['strategy']
+
+    # strategy = hparams['strategy']
+
     # Train model
     # "ddp_spawn" needed for interactive jupyter, but best to use "ddp" if not
     trainer = pl.Trainer(
@@ -201,8 +209,9 @@ def main(args):
         # auto_scale_batch_size=True,
         check_val_every_n_epoch=1,
         num_sanity_val_steps=2,
+        max_epochs=hparams['warmup_epochs']+hparams['max_epochs'],
         precision=hparams['precision'],
-        strategy=hparams['strategy'],
+        strategy=strategy,
         # plugins=DDPSpawnPlugin(find_unused_parameters=False),
         callbacks=[checkpoint_callback, early_stopping_callback, lr_monitor],
         logger=tb_logger,
@@ -318,10 +327,10 @@ if __name__=='__main__':
     parser.add_argument("--decoder_attention_type", type=none_or_str, default=None,
                         help="Attention in decoder")
     
-    parser.add_argument("--augmentations", type=str, default='vfhfrrtrrcbrgd',
+    parser.add_argument("--augmentations", type=str, default='vfhfrrtrrcgdbr',
                         help="training augmentations to use")
     
-    parser.add_argument("--cloud_augmentations", type=str, default='vfhfrrtrrcbrgd',
+    parser.add_argument("--cloud_augmentations", type=str, default='vfhfrrtrrcgdbr',
                         help="training augmentations to use for cloudmix")
         
     parser.add_argument("--cloud_augment", action="store_true",
