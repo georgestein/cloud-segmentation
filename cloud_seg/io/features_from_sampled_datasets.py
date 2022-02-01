@@ -1,9 +1,10 @@
-from .features import sample_compiled_images
 from collections import namedtuple
 import random
 import os
-import numpy as np
 import subprocess
+import numpy as np
+from .features import sample_compiled_images
+
 
 NCHIPS_TRAIN = 11600
 NCHIPS_VAL = 178
@@ -61,12 +62,13 @@ def create_compiled_dataset(bands, sample_by_LC=True, download=False):
             if download:
                 download_file(LC_name)
 
-            dominant_LC = get_dominant_LC(LC_name)
+            dominant_LCs = get_dominant_LC(LC_name)
 
-            num_pixels_per_image = lc_classes[dominant_LC].num_pixels_per_image
+            num_pixels_per_image = [lc_classes[dominant_LC].num_pixels_per_image
+                                    for dominant_LC in dominant_LCs]
 
         else:
-            num_pixels_per_image = PIX_SAMPLED_PER_IMAGE
+            num_pixels_per_image = [PIX_SAMPLED_PER_IMAGE]*100
 
         features_tmp, labels_tmp = sample_compiled_images(
             image_names, label_name, num_pixels_per_image)
@@ -135,7 +137,7 @@ def create_chip_mask(bad_chip_path: str=BAD_CHIP_PATH, download: bool=False):
     is_bad_chip = np.tile(is_bad_chip, (1, 1, PIX_SAMPLED_PER_IMAGE))
     is_bad_chip = is_bad_chip.flatten()
 
-    np.save(f'train_features_bad_chip_mask.npy', is_bad_chip)
+    np.save('train_features_bad_chip_mask.npy', is_bad_chip)
 
 def get_bad_chips(bad_chip_path):
     """Get the list of bad chips."""
@@ -146,7 +148,8 @@ def get_bad_chips(bad_chip_path):
 
 def get_dominant_LC(LC_name):
     LC_per_pixel = np.load(LC_name)
-    pixels_per_class = np.zeros(NUM_LC_CLASSES, dtype='uint8')
+    LC_per_pixel = LC_per_pixel.reshape((100, 512*512))
+    pixels_per_class = np.zeros((100, NUM_LC_CLASSES), dtype=np.int)
     for i in range(NUM_LC_CLASSES):
-        pixels_per_class[i] = (LC_per_pixel == i).sum()
-    return np.argmax(pixels_per_class)
+        pixels_per_class[:, i] = (LC_per_pixel == i).sum(-1)
+    return np.argmax(pixels_per_class, axis=-1)

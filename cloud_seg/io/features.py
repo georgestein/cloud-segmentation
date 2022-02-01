@@ -1,9 +1,9 @@
 """Useful utilities for feature-based classification."""
 
 import os
-import numpy as np
 import random
 from pathlib import Path
+import numpy as np
 
 NPIX = 512
 NFEATURES = 4
@@ -83,14 +83,12 @@ def add_logbands(features: np.ndarray, feature_names: list) -> tuple:
 
     return features, feature_names
 
-def sample_compiled_images(image_paths, label_path, npix):
+def sample_compiled_images(image_paths: list, label_path: str,
+                           num_pixels_per_image: list) -> np.ndarray:
     """Sample `npix` pixels from each image in a compiled dataset."""
-    pixels_to_sample = get_pixels_to_sample(npix)
-
     nfeatures = len(image_paths)
-
     labels = np.load(label_path)
-    
+
     images = None
     for i, image_path in enumerate(image_paths):
         image = np.load(image_path)
@@ -98,15 +96,25 @@ def sample_compiled_images(image_paths, label_path, npix):
             nimages, npixx, npixy = image.shape
             images = np.zeros((nimages, npixx, npixy, nfeatures), dtype=image.dtype)
         images[..., i] = image
-    
-    sampled_features = np.zeros((nimages, npix, nfeatures), dtype=images.dtype)
-    sampled_labels = np.zeros((nimages, npix), dtype=labels.dtype)
-    for i, pixidx in enumerate(pixels_to_sample):
-        idxx, idxy = np.unravel_index(pixidx, (NPIX, NPIX))
-        sampled_features[:, i, :] = images[:, idxx, idxy, :]
-        sampled_labels[:, i] = labels[:, idxx, idxy]
 
-    return sampled_features.reshape(-1, nfeatures), sampled_labels.reshape(-1)
+    sampled_features = np.zeros((0, nfeatures), dtype=images.dtype)
+    sampled_labels = np.zeros((0), dtype=labels.dtype)
+
+    for npix in num_pixels_per_image:
+        pixels_to_sample = get_pixels_to_sample(npix)
+        tmp_features = np.zeros((npix, nfeatures), dtype=images.dtype)
+        tmp_labels = np.zeros((npix), dtype=labels.dtype)
+
+        for i, pixidx in enumerate(pixels_to_sample):
+            idxx, idxy = np.unravel_index(pixidx, (NPIX, NPIX))
+
+            tmp_features[i, :] = images[:, idxx, idxy, :]
+            tmp_labels[i] = labels[:, idxx, idxy]
+
+        sampled_features = np.concatenate((sampled_features, tmp_features), axis=0)
+        sampled_labels = np.concatenate((sampled_labels, tmp_labels))
+
+    return sampled_features, sampled_labels
 
 def get_pixels_to_sample(npix_to_sample: int) -> list:
     pixels_to_sample = []
@@ -118,26 +126,30 @@ def get_pixels_to_sample(npix_to_sample: int) -> list:
             npix_sampled += 1
     return pixels_to_sample
 
-def get_band(band: str, validation: bool=False, name: str=None, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
+def get_band(band: str, validation: bool=False, name: str=None,
+             data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
     if not validation:
         return get_train_band(band, data_dir=data_dir)
-    else:
-        return get_validation_band(band, name, data_dir=data_dir)
+    return get_validation_band(band, name, data_dir=data_dir)
 
 def get_train_band(band: str, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
     band_idx = ALL_BANDS.index(band)
     file_idx = band_idx//NBANDS_PER_FILE
     file_bands = ALL_BANDS[file_idx*NBANDS_PER_FILE:(file_idx+1)*NBANDS_PER_FILE]
-    
-    feature = np.load(data_dir/f"train_features_{'_'.join(file_bands)}_seed0.npy")[:, file_bands.index(band)]
+
+    feature = np.load(
+        data_dir/f"train_features_{'_'.join(file_bands)}_seed0.npy"
+        )[:, file_bands.index(band)]
 
     return feature
 
-def get_validation_band(band: str, name: str, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
+def get_validation_band(band: str, name: str,
+                        data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
     feature = np.load(data_dir/f"{band}_{name}.npy").reshape(-1)
     return feature
 
-def generate_colour_difference(band1: str, band2: str, validation: bool=False, name: str=None, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
+def generate_colour_difference(band1: str, band2: str, validation: bool=False, name: str=None,
+                               data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
     feature1 = get_band(band1, validation, name, data_dir)
     feature2 = get_band(band2, validation, name, data_dir)
 
@@ -151,7 +163,8 @@ def generate_colour_difference(band1: str, band2: str, validation: bool=False, n
 
     return colour
 
-def generate_colour_ratio(band1: str, band2: str, validation: bool=False, name: str=None, data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
+def generate_colour_ratio(band1: str, band2: str, validation: bool=False, name: str=None,
+                          data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
     feature1 = get_band(band1, validation, name, data_dir)
     feature2 = get_band(band2, validation, name, data_dir)
 
@@ -177,7 +190,7 @@ class Features():
         else:
             self.npixels = 26214400
             assert file_name is not None
-        
+
         self.value = np.zeros((self.npixels, 0))
         self.names = []
         self.set_type = set_type
@@ -185,22 +198,24 @@ class Features():
         self.file_name = file_name
         self.nfeatures = 0
         self.data_dir = data_dir
-        
+
     def add(self, feature: str):
 
         if '-' in feature:
-            new_feature = generate_colour_difference(*feature.split('-'), self.validation, self.file_name, self.data_dir)
+            new_feature = generate_colour_difference(
+                *feature.split('-'), self.validation, self.file_name, self.data_dir)
         elif '/' in feature:
-            new_feature = generate_colour_ratio(*feature.split('/'), self.validation, self.file_name, self.data_dir)
+            new_feature = generate_colour_ratio(
+                *feature.split('/'), self.validation, self.file_name, self.data_dir)
         else:
             new_feature = get_band(feature, self.validation, self.file_name, self.data_dir)
-        
+
         try:
             self.value = np.concatenate(
                 (self.value, new_feature[:, np.newaxis]), axis=-1)
 
         except ValueError as e:
-            if self.value.size > 0: 
+            if self.value.size > 0:
                 raise e
 
             self.npixels = new_feature.shape[0]
@@ -208,7 +223,7 @@ class Features():
 
         self.names += [feature]
         self.nfeatures += 1
-    
+
     def get_value_for(self, feature: str) -> np.ndarray:
         return self.value[:, self.names.index(feature)]
 
