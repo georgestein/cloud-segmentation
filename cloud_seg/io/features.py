@@ -100,7 +100,7 @@ def sample_compiled_images(image_paths: list, label_path: str,
     sampled_features = np.zeros((0, nfeatures), dtype=images.dtype)
     sampled_labels = np.zeros((0), dtype=labels.dtype)
 
-    for npix in num_pixels_per_image:
+    for image_idx, npix in enumerate(num_pixels_per_image):
         pixels_to_sample = get_pixels_to_sample(npix)
         tmp_features = np.zeros((npix, nfeatures), dtype=images.dtype)
         tmp_labels = np.zeros((npix), dtype=labels.dtype)
@@ -108,8 +108,8 @@ def sample_compiled_images(image_paths: list, label_path: str,
         for i, pixidx in enumerate(pixels_to_sample):
             idxx, idxy = np.unravel_index(pixidx, (NPIX, NPIX))
 
-            tmp_features[i, :] = images[:, idxx, idxy, :]
-            tmp_labels[i] = labels[:, idxx, idxy]
+            tmp_features[i, :] = images[image_idx, idxx, idxy, :]
+            tmp_labels[i] = labels[image_idx, idxx, idxy]
 
         sampled_features = np.concatenate((sampled_features, tmp_features), axis=0)
         sampled_labels = np.concatenate((sampled_labels, tmp_labels))
