@@ -78,7 +78,7 @@ def construct_cloudless_datafame(df_val, params: dict):
     in_val = [os.path.basename(i) in df_val['chip_id'].to_numpy() for i in all_chips]
     all_chips = [chip for ichip, chip in enumerate(all_chips) if not in_val[ichip]] 
 
-    # remove chips that had good performance in previus model (leaving desert, water, etc...)
+    # remove chips that had good performance in previous model (leaving desert, water, etc...)
     if params['select_worst_pred_chips']:
         chip_ids_worst_preds = np.loadtxt("../data/BAD_CHIP_DATA/worst_preds_chip_ids.txt", dtype=str)
         scale_worst_preds = np.loadtxt("../data/BAD_CHIP_DATA/worst_preds_int-union.txt", dtype=float)
@@ -198,8 +198,9 @@ def split_train_val(df, params):
 
         # REMOVE EASY CHIPS FROM TRAIN SET            
         print("Train, val, total shape = ", train.shape, val.shape, train.shape[0]+val.shape[0])
-        train = train[~train["chip_id"].isin(EASY_CHIP_IDS)].reset_index(drop=True)
-        print("After easy chip removal: Train, val, total shape = ", train.shape, val.shape, train.shape[0]+val.shape[0])
+        if params['remove_easy_chips']:
+            train = train[~train["chip_id"].isin(EASY_CHIP_IDS)].reset_index(drop=True)
+            print("After easy chip removal: Train, val, total shape = ", train.shape, val.shape, train.shape[0]+val.shape[0])
     
         # subsample good predictions from previous_model
         # remove chips that had good performance in previus model (leaving desert, water, etc...)
@@ -281,7 +282,10 @@ def main():
                                              
     parser.add_argument("--subsample_best_pred_chips", action="store_true",
                         help="Subsample chips that had predictions better than good_pred_maximum") 
-        
+    
+    parser.add_argument("--remove_easy_chips", action="store_true",
+                        help="Remove easy to classify chips") 
+                
     parser.add_argument("--bad_pred_minimum", type=float, default=0.2,
                         help="Only use cloudless chips that predictions off by more than this amount") 
 

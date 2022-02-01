@@ -128,7 +128,7 @@ class CloudAugmentations:
 
         for aug in augs:
             if aug not in self.aug_to_func.keys():
-                sys.exit(f"Augmentation abbreviation {aug} is not an available key. Choose from", self.aug_to_name.key())
+                sys.exit(f"Augmentation abbreviation {aug} is not an available key. Choose from", self.aug_to_name.keys())
 
             self.aug_to_func[aug]() # () required to actually call function                                    
 
@@ -175,5 +175,5 @@ class ModifyBrightness(ImageOnlyTransform):
                 size=nsamples
             )
         
-        return img * amplitude_i
+        return img * np.float32(amplitude_i)
 

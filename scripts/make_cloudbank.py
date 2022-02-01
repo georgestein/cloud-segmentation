@@ -42,6 +42,12 @@ TRAIN_LABELS = DATA_DIR / "train_labels/"
 IMAGE_OUTSIZE = [512, 512]
 INTERPOLATION_ORDER = 0
 
+BAD_CHIPS_FILE = DATA_DIR / "BAD_CHIP_DATA/BAD_CHIP_LABEL_IDS.txt"
+EASY_CHIPS_FILE = DATA_DIR / "BAD_CHIP_DATA/EASY_CHIPS_IDS.txt"
+
+BAD_CHIP_IDS = list(np.loadtxt(BAD_CHIPS_FILE, dtype=str))
+EASY_CHIP_IDS = list(np.loadtxt(EASY_CHIPS_FILE, dtype=str))
+
 assert TRAIN_FEATURES.exists(), TRAIN_LABELS.exists()
 
 Path(DATA_DIR_OUT).mkdir(parents=True, exist_ok=True)
@@ -147,6 +153,12 @@ def construct_cloudbank_dataframe(df_val, params: dict):
     df_meta = pd.DataFrame(cloudbank, columns=list(df_val.columns)+['label_path'])
     df_meta.head()
     
+    # Remove chips with incorrect labels
+    print(len(df_meta))
+    df_meta = df_meta[~df_meta["chip_id"].isin(BAD_CHIP_IDS)].reset_index(drop=True)
+    print(f"\nREMOVING {len(BAD_CHIP_IDS)} BAD LABELS")
+    print(len(df_meta))
+
     return df_meta
 
 def load_validation_dataframe(isplit: int, params: dict):
@@ -167,8 +179,7 @@ def save_dataframe_to_disk(df_meta, isplit, params: dict):
 
     df_meta.to_csv(DATA_DIR_OUT / file_name_out, index=False)
 
-def load_npz_arrays_for_chip(chip_id, params):
-    
+def load_npz_arrays_for_chip(chip_id):
     cloudless_chip_dir = DATA_DIR_CLOUDLESS / chip_id
     images_cloudless_all = {}
 
@@ -235,13 +246,16 @@ def load_npz_arrays_for_chip(chip_id, params):
         
     return images_cloudless_all_matching       
 
-def save_npz_chip_arrays_to_tif(cloudless_dir, params):
+def save_npz_chip_arrays_to_tif(cloudless_dir):
     
     chip_id = os.path.basename(cloudless_dir)
     print(chip_id)
     
-    images_cloudless_all = load_npz_arrays_for_chip(chip_id, params)
-
+    try:
+        images_cloudless_all = load_npz_arrays_for_chip(chip_id)
+    except:
+        return
+    
     for iimg in range(images_cloudless_all["B02"].shape[0]):
         band_diri = Path(DATA_DIR_CLOUDLESS_TIF / f"{chip_id}/{iimg}/")
         Path(band_diri).mkdir(parents=True, exist_ok=True)
@@ -253,7 +267,7 @@ def save_npz_chip_arrays_to_tif(cloudless_dir, params):
             band_image = Image.fromarray(images_cloudless_all[band][iimg])        
             band_image.save(band_loc)   
 
-def run_npz_chip_arrays_to_tif(params: dict):
+def run_npz_chip_arrays_to_tif():
     
     cloudless_dirs_all = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
     # check npz exists on disk
@@ -282,7 +296,7 @@ def run_npz_chip_arrays_to_tif(params: dict):
     if params['max_pool_size'] <= 1:
         for cloudless_dir in cloudless_dirs:
             try:
-                save_npz_chip_arrays_to_tif(cloudless_dir, params)
+                save_npz_chip_arrays_to_tif(cloudless_dir)
             except:
                 print(f"{cloudless_dir} has no matching")
     else:
@@ -403,7 +417,7 @@ def run_make_clouds(params: dict):
 def main():
 
     if params['save_cloudless_as_tif']:
-        run_npz_chip_arrays_to_tif(params)
+        run_npz_chip_arrays_to_tif()
 
     if params['extract_clouds']:
         # Extract all clouds from pairs of cloudy and cloudless chips
