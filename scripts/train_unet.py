@@ -209,6 +209,7 @@ def main(args):
         # auto_scale_batch_size=True,
         check_val_every_n_epoch=1,
         num_sanity_val_steps=2,
+        max_epochs=hparams['warmup_epochs']+hparams['max_epochs'],
         precision=hparams['precision'],
         strategy=strategy,
         # plugins=DDPSpawnPlugin(find_unused_parameters=False),
