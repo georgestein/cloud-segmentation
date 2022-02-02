@@ -116,4 +116,4 @@ def parse_commandline_arguments() -> "argparse.Namespace":
 
 if __name__=='__main__':
     ARGS = parse_commandline_arguments()
-    landcover_per_chip(Path(ARGS.data_dir), ARGS.path_to_badchips)
+    calculate_combined_ious(Path(ARGS.data_dir), ARGS.path_to_badchips)
