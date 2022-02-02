@@ -29,10 +29,11 @@ except ImportError:
     import pull_additional_chip_data
 
 def make_unet_predictions(
-    model: CloudModel,
-    x_paths: pd.DataFrame,
-    hparams,
-    predictions_dir: os.PathLike,
+        model: CloudModel,
+        x_paths: pd.DataFrame,
+        hparams,
+        predictions_dir: os.PathLike,
+        cross_validation_split: int,
 ):
     """Predicts cloud cover and saves results to the predictions directory.
 
@@ -76,7 +77,7 @@ def make_unet_predictions(
 
         preds = model.forward(x)
         preds = torch.sigmoid(preds)
-        preds = (preds > 0.5) * 1
+        #preds = (preds > 0.5) * 1
         preds = preds.detach()
 
         if model.gpu:
@@ -85,7 +86,7 @@ def make_unet_predictions(
         preds = preds.numpy()
 
         for chip_id, pred in zip(batch["chip_id"], preds):
-            chip_pred_path = predictions_dir / f"{chip_id}.npy"
+            chip_pred_path = predictions_dir / f"{chip_id}_cv{cross_validation_split}.npy"
             np.save(chip_pred_path, pred.astype(np.float32))
 
         '''

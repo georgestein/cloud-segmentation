@@ -16,6 +16,8 @@ NBANDS_PER_FILE = 4
 PIX_PER_IMAGE = NPIX*NPIX
 DATA_DIR = Path('.')
 
+PIX_PER_IMAGE_INDS = np.arange(PIX_PER_IMAGE)
+
 def load_dataset(name: str, data_dir: os.PathLike=DATA_DIR, max_images: int=None):
     """Load compiled datasets of images and labels.
 
@@ -117,14 +119,20 @@ def sample_compiled_images(image_paths: list, label_path: str,
     return sampled_features, sampled_labels
 
 def get_pixels_to_sample(npix_to_sample: int) -> list:
-    pixels_to_sample = []
-    npix_sampled = 0
-    while npix_sampled < npix_to_sample:
-        next_pix = random.randrange(PIX_PER_IMAGE)
-        if next_pix not in pixels_to_sample:
-            pixels_to_sample += [next_pix]
-            npix_sampled += 1
-    return pixels_to_sample
+
+    pixels_to_sample = np.random.choice(PIX_PER_IMAGE_INDS, size=npix_to_sample, replace=False)
+
+    return list(pixels_to_sample)
+
+#def get_pixels_to_sample(npix_to_sample: int) -> list:
+#    pixels_to_sample = []
+#    npix_sampled = 0
+#    while npix_sampled < npix_to_sample:
+#        next_pix = random.randrange(PIX_PER_IMAGE)
+#        if next_pix not in pixels_to_sample:
+#            pixels_to_sample += [next_pix]
+#            npix_sampled += 1
+#    return pixels_to_sample
 
 def get_band(band: str, validation: bool=False, name: str=None,
              data_dir: os.PathLike=DATA_DIR) -> np.ndarray:

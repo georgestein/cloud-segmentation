@@ -82,17 +82,30 @@ def get_metadata(features_dir: os.PathLike,
 
     return chip_metadata.transpose().reset_index().rename(columns={"index": "chip_id"})
 
-def compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, predictions_dir):
+def compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, predictions_dir, hparams):
     """
     load in predictions for Unet and/or Boosting model(s),
     and save to final prediction dir
     """
     for chip_id in metadata['chip_id']:
-        pred_unet = np.load(unet_predictions_dir / f"{chip_id}.npy")
-        pred_gbm  = np.load(gbm_predictions_dir / f"{chip_id}.npy")
+        preds_unet = []
+        for icross_validation in range(hparams['num_cross_validation_splits']):
+            #pred_unet = np.load(unet_predictions_dir / f"{chip_id}.npy")
+            preds_unet.append(np.load(unet_predictions_dir / f"{chip_id}_cv{icross_validation}.npy"))
+        preds_unet = np.stack(preds_unet, axis=-1)
+
+        # Mean of models equals final prediction
+        pred_unet = np.mean(preds_unet, axis=-1) 
+
+        if hparams['use_features']:
+            pred_gbm  = np.load(gbm_predictions_dir / f"{chip_id}.npy")
+            pred_gbm = (pred_gbm>0.1)*1
         
-        pred_final = ( (pred_unet + pred_gbm)/2 >= 0.5)*1
-        pred_final = pred_final.astype("uint8")
+        #pred_final = ( (pred_unet + pred_gbm)/2 >= 0.5)*1
+        #pred_final = pred_final.astype("uint8")
+        #pred_final = ((pred_unet >= 0.5)*1).astype("uint8")
+
+        pred_final = ((pred_unet >= 0.5) * 1).astype("uint8")
 
         chip_pred_path = predictions_dir / f"{chip_id}.tif"
         chip_pred_im = Image.fromarray(pred_final)
@@ -126,11 +139,30 @@ def main(
         )
     predictions_dir.mkdir(exist_ok=True, parents=True)
 
-    unet_predictions_dir = Path("data_new/predictions_unet")
+    unet_predictions_dir = Path(f"data_new/predictions_unet")
     unet_predictions_dir.mkdir(exist_ok=True, parents=True)
+
     gbm_predictions_dir = Path("data_new/predictions_gbm")
     gbm_predictions_dir.mkdir(exist_ok=True, parents=True)
 
+    # Load parameters for Unet
+    hparams = np.load(hparams_unet_path, allow_pickle=True).item()
+    logger.info(hparams)
+    
+    hparams['batch_size'] = 8
+    hparams['num_workers'] = 4
+    hparams['weights'] = None
+    # Load with gpu=False, then put on GPU
+    hparams['gpu'] = False
+
+
+    download_new_bands = False
+    missing_bands = list(set(hparams['bands_use']) - set(['B02', 'B03', 'B04', 'B08']))
+    if missing_bands != []:
+        download_new_bands = True
+    if hparams['use_features']:
+        download_new_bands = True
+                
     # Load metadata
     params_metadata = {}
     params_metadata['bands_use'] = ['B01', 'B02', 'B03', 'B04', 'B08', 'B11']
@@ -150,70 +182,69 @@ def main(
         metadata = metadata.head()
     logger.info(f"Found {len(metadata)} chips")
 
-    logger.info("Pulling additional data")
-    # Pull additional bands B01 and B11
-    # By default saved to data_new/test_features_new
-    for ithreaded_pull in range(10):
-        # run threaded pull a few times
-        try:
-            pull_additional_chip_data.main(max_pool_size=8)
-        except:
-            logger.info(f"Pulling threaded data {ithreaded_pull} to best of ability")
+    if download_new_bands:
+        logger.info("Pulling additional data")
+        # Pull additional bands B01 and B11
+        # By default saved to data_new/test_features_new
+        for ithreaded_pull in range(10):
+            # run threaded pull a few times
+            try:
+                pull_additional_chip_data.main(max_pool_size=8)
+            except:
+                logger.info(f"Pulling threaded data {ithreaded_pull} to best of ability")
 
-    # pull data one final time with no threading
-    # this will skip already downloaded files and catch missing data from any threads that crashed
-    pull_additional_chip_data.main(max_pool_size=1)
+        # pull data one final time with no threading
+        # this will skip already downloaded files and catch missing data from any threads that crashed
+        pull_additional_chip_data.main(max_pool_size=1)
 
-    ## ADD FUNCTION HERE
-    new_chip_dirs = sorted(glob.glob("data_new/test_features_new/*"))
-    logger.info(f"New bands downloaded properly? {len(new_chip_dirs)} dirs in data_new/test_features_new")
-    num_missing = 0
-    for chip_id in metadata['chip_id']:
-        exists_on_disk = True
-        for band in params_metadata['bands_new']:
-            if not os.path.isfile(f"data_new/test_features_new/{chip_id}/{band}.tif"):
-                exists_on_disk = False
+        # Check everything downloaded properly
+        new_chip_dirs = sorted(glob.glob("data_new/test_features_new/*"))
+        logger.info(f"New bands downloaded properly? {len(new_chip_dirs)} dirs in data_new/test_features_new")
+        num_missing = 0
+        for chip_id in metadata['chip_id']:
+            exists_on_disk = True
+            for band in params_metadata['bands_new']:
+                if not os.path.isfile(f"data_new/test_features_new/{chip_id}/{band}.tif"):
+                    exists_on_disk = False
 
-        if not exists_on_disk:
-            num_missing+=1
+            if not exists_on_disk:
+                num_missing+=1
             
-    logger.info(f"{num_missing} new bands missing")
+        logger.info(f"{num_missing} new bands missing")
     
-    logger.info("Loading model")
+    logger.info("Loading and running Unet model")
 
-    # Load parameters for Unet
-    hparams_unet = np.load(hparams_unet_path, allow_pickle=True).item()
-    hparams_unet['batch_size'] = 8
-    hparams_unet['weights'] = None
-    # Load with gpu=False, then put on GPU
-    hparams_unet['gpu'] = False
+    for icross_validation in range(hparams['num_cross_validation_splits']):
+        logger.info(f"Running on U-Net cross validation split {icross_validation}")
+        # Load unet model
+        model = CloudModel(
+            bands=hparams['bands_use'],
+            hparams=hparams,
+        )
 
+        model_weights_path_icv = os.path.splitext(model_weights_path)[0] + f"_cv{icross_validation}.pt"
+        print(model_weights_path_icv)
+        model.load_state_dict(torch.load(model_weights_path_icv))
 
-    # Load unet model
-    model = CloudModel(
-        bands=hparams_unet['bands_use'],
-        hparams=hparams_unet
-    )
+        hparams['gpu'] = True
+        if hparams['gpu']:
+            model = model.cuda()
+            model.gpu = True
 
-    model.load_state_dict(torch.load(model_weights_path))
+        # Make predictions and save to disk
+        logger.info("Generating U-Net predictions in batches")
+        # predict image-based
+        make_unet_predictions(model, metadata, hparams, unet_predictions_dir, icross_validation)
 
-    hparams_unet['gpu'] = True
-    if hparams_unet['gpu']:
-        model = model.cuda()
-        model.gpu = True
-
-    # Make predictions and save to disk
-    logger.info("Generating U-Net predictions in batches")
-    # predict image-based
-    make_unet_predictions(model, metadata, hparams_unet, unet_predictions_dir)
-
-
-    logger.info("Generating GBM predictions in batches")
     # predict feature based
-    make_gbm_predictions(metadata, gbm_predictions_dir)
+    if hparams['use_features']:
+
+        logger.info("Generating GBM predictions in batches")
+
+        make_gbm_predictions(metadata, gbm_predictions_dir)
 
     # compile predictions from each model into final prediction
-    compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, predictions_dir)
+    compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, predictions_dir, hparams)
 
     logger.info(f"""Saved {len(list(predictions_dir.glob("*.tif")))} predictions""")
 
