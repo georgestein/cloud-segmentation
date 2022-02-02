@@ -50,7 +50,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path):
             end_img = start_img + 100
         image_id = f'{start_img:06d}_{end_img:06d}'
 
-        unet = np.load(data_dir/f'preds_unet_{image_id}.npy')
+        unet = np.load(data_dir/f'preds_{image_id}.npy')
         labels = load_labels(data_dir, image_id, bad_chip_label_path)
         gbm, gbm_smoothed = load_gbm(data_dir, image_id)
 
