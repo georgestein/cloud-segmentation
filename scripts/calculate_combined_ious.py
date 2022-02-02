@@ -42,7 +42,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path):
     union_unet_or_gbm_smoothed = 0
     union_gbm_smoothed = 0
 
-    for start_img in range(0, 100, 100): #11748, 100):
+    for start_img in range(0, 11748, 100):
 
         if start_img == 11700:
             end_img = 11748
