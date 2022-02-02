@@ -24,7 +24,7 @@ import argparse
 try:
     from cloud_seg.pc_apis import query_bands
     from cloud_seg.utils import utils
-except:
+except ImportError:
     import query_bands
     import utils
     

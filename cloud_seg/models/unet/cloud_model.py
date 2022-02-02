@@ -199,7 +199,7 @@ class CloudModel(pl.LightningModule):
             loss = dice_loss(preds, label)
             
         if self.loss_function.upper()=="JACCARD":
-            loss = power_jaccard(preds, label, power_val=1.)
+            loss = power_jaccard(preds, label, power_val=1.75)
 
         return loss
 

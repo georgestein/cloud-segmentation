@@ -42,7 +42,8 @@ DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/" #sorted/"
 
 # PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
 # PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_cloudaugment_resnet18_bce_vfrc_customfeats_None_2022-01-24/predictions/"
-PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/submission_dir/predictions"
+# PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/submission_dir/predictions"
+PREDICTION_DIR = DATA_DIR / "predictions_best"
 
 TRAIN_FEATURES = DATA_DIR / "train_features"
 TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"
@@ -73,6 +74,9 @@ parser.add_argument("--max_pool_size", type=int, default=64,
 
 parser.add_argument("--add_predictions", action='store_true',
                     help="Add unet predictions") 
+
+parser.add_argument("--prediction_type", type=str, default='unet',
+                    help="unet or gbm") 
                                                
 parser.add_argument("-v", "--verbose", action="store_true",
                     help="increase output verbosity")
@@ -300,7 +304,7 @@ def get_chips_in_npy(ichip_start, ichip_end, bands=["B02", "B03", "B04", "B08"])
 
     if params['add_predictions']:
 
-        d['preds'] = preds
+        d[f"preds_{params['prediction_type']}"] = preds
         d['preds_mean'] = preds_mean
 
         d['intersection'] = intersection

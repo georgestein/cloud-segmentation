@@ -128,7 +128,7 @@ class CloudAugmentations:
 
         for aug in augs:
             if aug not in self.aug_to_func.keys():
-                sys.exit(f"Augmentation abbreviation {aug} is not an available key. Choose from", self.aug_to_name.key())
+                sys.exit(f"Augmentation abbreviation {aug} is not an available key. Choose from", self.aug_to_name.keys())
 
             self.aug_to_func[aug]() # () required to actually call function                                    
 
@@ -152,7 +152,9 @@ class ModifyBrightness(ImageOnlyTransform):
         self.mean_brightness = 1.
         self.p = p
         self.per_channel = per_channel
-        
+
+    def get_transform_init_args_names(self):
+        return ("sigma_brightness",)        
  
     def apply(self, img, **params):
         if np.random.uniform() > self.p:
@@ -173,5 +175,5 @@ class ModifyBrightness(ImageOnlyTransform):
                 size=nsamples
             )
         
-        return img * amplitude_i
+        return img * np.float32(amplitude_i)
 
