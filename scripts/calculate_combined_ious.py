@@ -1,13 +1,13 @@
-import numpy as np
 from pathlib import Path
+import argparse
+import numpy as np
 from scipy.ndimage import gaussian_filter
-import matplotlib.pyplot as plt
-import pandas
+
 
 def load_labels(data_dir, image_id, bad_chip_label_path):
     labels = np.load(data_dir/f'labels_{image_id}.npy')
     chip_ids = np.load(data_dir/f'chip_ids_{image_id}.npy')
-    with open(bad_chip_label_path) as f:
+    with open(bad_chip_label_path, encoding='utf8') as f:
         bad_chips = f.readlines()
     bad_chips = [bad_chip.replace('\n', '') for bad_chip in bad_chips]
     for i, chip_id in enumerate(chip_ids):
@@ -26,21 +26,21 @@ def load_feature(data_dir, image_id, feature_str):
     return feature, feature_smoothed
 
 def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str):
-    intersection_unet_and_feature = 0
-    intersection_unet_or_feature = 0
-    intersection_unet = 0
-    intersection_feature = 0
-    intersection_unet_and_feature_smoothed = 0
-    intersection_unet_or_feature_smoothed = 0
-    intersection_feature_smoothed = 0
+    intersection_unet_and_feature = [0]*11
+    intersection_unet_or_feature = [0]*11
+    intersection_unet = [0]*11
+    intersection_feature = [0]*11
+    intersection_unet_and_feature_smoothed = [0]*11
+    intersection_unet_or_feature_smoothed = [0]*11
+    intersection_feature_smoothed = [0]*11
 
-    union_unet_and_feature = 0
-    union_unet_or_feature = 0
-    union_unet = 0
-    union_feature = 0
-    union_unet_and_feature_smoothed = 0
-    union_unet_or_feature_smoothed = 0
-    union_feature_smoothed = 0
+    union_unet_and_feature = [0]*11
+    union_unet_or_feature = [0]*11
+    union_unet = [0]*11
+    union_feature = [0]*11
+    union_unet_and_feature_smoothed = [0]*11
+    union_unet_or_feature_smoothed = [0]*11
+    union_feature_smoothed = [0]*11
 
     for start_img in range(0, 11748, 100):
 
@@ -52,6 +52,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
 
         unet = np.load(data_dir/f'preds_{unet_str}_{image_id}.npy')
         labels = load_labels(data_dir, image_id, bad_chip_label_path)
+        pixelLC = np.load(data_dir/f'LC_{image_id}.npy')
         feature, feature_smoothed = load_feature(data_dir, image_id, feature_str)
 
         feature = feature.flatten()
@@ -59,41 +60,52 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
         unet = unet.flatten()
         labels = labels.flatten()
 
-        mask = labels<2
+        for LC in range(11):
+            mask = (labels < 2) & (pixelLC == LC)
 
-        feature = feature[mask]
-        feature_smoothed = feature_smoothed[mask]
-        unet = unet[mask]
-        labels = labels[mask]
+            feature = feature[mask]
+            feature_smoothed = feature_smoothed[mask]
+            unet = unet[mask]
+            labels = labels[mask]
 
-        unet_and_feature = unet & feature
-        unet_or_feature = unet | feature
-        unet_and_feature_smoothed = unet & feature_smoothed
-        unet_or_feature_smoothed = unet | feature_smoothed
+            unet_and_feature = unet & feature
+            unet_or_feature = unet | feature
+            unet_and_feature_smoothed = unet & feature_smoothed
+            unet_or_feature_smoothed = unet | feature_smoothed
 
-        intersection_unet_and_feature += np.sum(unet_and_feature & labels)
-        intersection_unet_or_feature += np.sum(unet_or_feature & labels)
-        intersection_unet += np.sum(unet & labels)
-        intersection_feature += np.sum(feature & labels)
-        intersection_unet_and_feature_smoothed += np.sum(unet_and_feature_smoothed & labels)
-        intersection_unet_or_feature_smoothed += np.sum(unet_or_feature_smoothed & labels)
-        intersection_feature_smoothed += np.sum(feature_smoothed & labels)
+            intersection_unet_and_feature[LC] += np.sum(unet_and_feature & labels)
+            intersection_unet_or_feature[LC] += np.sum(unet_or_feature & labels)
+            intersection_unet[LC] += np.sum(unet & labels)
+            intersection_feature[LC] += np.sum(feature & labels)
+            intersection_unet_and_feature_smoothed[LC] += np.sum(unet_and_feature_smoothed & labels)
+            intersection_unet_or_feature_smoothed[LC] += np.sum(unet_or_feature_smoothed & labels)
+            intersection_feature_smoothed[LC] += np.sum(feature_smoothed & labels)
 
-        union_unet_and_feature += np.sum(unet_and_feature | labels)
-        union_unet_or_feature += np.sum(unet_or_feature | labels)
-        union_unet += np.sum(unet | labels)
-        union_feature += np.sum(feature | labels)
-        union_unet_and_feature_smoothed += np.sum(unet_and_feature_smoothed | labels)
-        union_unet_or_feature_smoothed += np.sum(unet_or_feature_smoothed | labels)
-        union_feature_smoothed += np.sum(feature_smoothed | labels)
+            union_unet_and_feature[LC] += np.sum(unet_and_feature | labels)
+            union_unet_or_feature[LC] += np.sum(unet_or_feature | labels)
+            union_unet[LC] += np.sum(unet | labels)
+            union_feature[LC] += np.sum(feature | labels)
+            union_unet_and_feature_smoothed[LC] += np.sum(unet_and_feature_smoothed | labels)
+            union_unet_or_feature_smoothed[LC] += np.sum(unet_or_feature_smoothed | labels)
+            union_feature_smoothed[LC] += np.sum(feature_smoothed | labels)
 
-    print(f'unet | feature: {intersection_unet_or_feature/union_unet_or_feature}')
-    print(f'unet & feature: {intersection_unet_and_feature/union_unet_and_feature}')
-    print(f'unet | feature_smoothed: {intersection_unet_or_feature_smoothed/union_unet_or_feature_smoothed}')
-    print(f'unet & feature_smoothed: {intersection_unet_and_feature_smoothed/union_unet_and_feature_smoothed}')
-    print(f'unet: {intersection_unet/union_unet}')
-    print(f'feature: {intersection_feature/union_feature}')
-    print(f'feature_smoothed: {intersection_feature_smoothed/union_feature_smoothed}')
+    for LC in range(11):
+        print(f'LC {LC}: unet | feature: {intersection_unet_or_feature[LC]/union_unet_or_feature[LC]}')
+        print(f'LC {LC}: unet & feature: {intersection_unet_and_feature[LC]/union_unet_and_feature[LC]}')
+        print(f'LC {LC}: unet | feature_smoothed: {intersection_unet_or_feature_smoothed[LC]/union_unet_or_feature_smoothed[LC]}')
+        print(f'LC {LC}: unet & feature_smoothed: {intersection_unet_and_feature_smoothed[LC]/union_unet_and_feature_smoothed[LC]}')
+        print(f'LC {LC}: unet: {intersection_unet[LC]/union_unet[LC]}')
+        print(f'LC {LC}: feature: {intersection_feature[LC]/union_feature[LC]}')
+        print(f'LC {LC}: feature_smoothed: {intersection_feature_smoothed[LC]/union_feature_smoothed[LC]}')
+        print('')
+
+    print(f'unet | feature: {sum(intersection_unet_or_feature)/sum(union_unet_or_feature)}')
+    print(f'unet & feature: {sum(intersection_unet_and_feature)/sum(union_unet_and_feature)}')
+    print(f'unet | feature_smoothed: {sum(intersection_unet_or_feature_smoothed)/sum(union_unet_or_feature_smoothed)}')
+    print(f'unet & feature_smoothed: {sum(intersection_unet_and_feature_smoothed)/sum(union_unet_and_feature_smoothed)}')
+    print(f'unet: {sum(intersection_unet)/sum(union_unet)}')
+    print(f'feature: {sum(intersection_feature)/sum(union_feature)}')
+    print(f'feature_smoothed: {sum(intersection_feature_smoothed)/sum(union_feature_smoothed)}')
 
 def parse_commandline_arguments() -> "argparse.Namespace":
     """Parse commandline arguments."""
