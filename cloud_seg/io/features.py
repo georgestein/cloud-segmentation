@@ -1,9 +1,9 @@
 """Useful utilities for feature-based classification."""
 
 import os
-import random
 from pathlib import Path
 import numpy as np
+from scipy.ndimage import gaussian_filter
 
 NPIX = 512
 NFEATURES = 4
@@ -86,7 +86,7 @@ def add_logbands(features: np.ndarray, feature_names: list) -> tuple:
     return features, feature_names
 
 def sample_compiled_images(image_paths: list, label_path: str,
-                           num_pixels_per_image: list) -> np.ndarray:
+                           num_pixels_per_image: list, smooth_sigma: float) -> np.ndarray:
     """Sample `npix` pixels from each image in a compiled dataset."""
     nfeatures = len(image_paths)
     labels = np.load(label_path)
@@ -94,6 +94,8 @@ def sample_compiled_images(image_paths: list, label_path: str,
     images = None
     for i, image_path in enumerate(image_paths):
         image = np.load(image_path)
+        if smooth_sigma is not None:
+            image = gaussian_filter(image, smooth_sigma)
         if images is None:
             nimages, npixx, npixy = image.shape
             images = np.zeros((nimages, npixx, npixy, nfeatures), dtype=image.dtype)

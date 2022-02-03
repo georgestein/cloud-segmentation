@@ -30,7 +30,7 @@ def get_lc_classes():
         LCClass(type='clouds', label=10, num_pixels_per_image=247126)]
     return lc_classes
 
-def create_compiled_dataset(bands, sample_by_LC=True, download=False):
+def create_compiled_dataset(bands, output_str, sample_by_LC=True, download=False, smooth_sigma=None):
     nfeatures = len(bands)
     nfiles = NCHIPS_TRAIN//100
 
@@ -71,7 +71,7 @@ def create_compiled_dataset(bands, sample_by_LC=True, download=False):
             num_pixels_per_image = [PIX_SAMPLED_PER_IMAGE]*100
 
         features_tmp, labels_tmp = sample_compiled_images(
-            image_names, label_name, num_pixels_per_image)
+            image_names, label_name, num_pixels_per_image, smooth_sigma)
         npixels = len(labels_tmp)
 
         if current_idx + npixels > max_idx:
@@ -101,7 +101,7 @@ def create_compiled_dataset(bands, sample_by_LC=True, download=False):
     train_features = train_features.reshape(-1, nfeatures)
     train_labels = train_labels.reshape(-1)
 
-    filename = f"{'_'.join(bands)}_seed{RANDOM_SEED}"
+    filename = f"{output_str}_{'_'.join(bands)}_seed{RANDOM_SEED}"
     np.save(f'train_features_{filename}.npy', train_features)
     np.save(f'train_labels_{filename}.npy', train_labels)
 
