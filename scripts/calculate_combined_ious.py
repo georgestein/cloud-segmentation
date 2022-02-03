@@ -15,32 +15,32 @@ def load_labels(data_dir, image_id, bad_chip_label_path):
             labels[i, ...] = 255
     return labels
 
-def load_gbm(data_dir, image_id):
-    gbm = np.load(data_dir/f'preds_gbm_{image_id}.npy')
-    gbm_smoothed = gbm.copy()
-    for i in range(gbm.shape[0]):
-        gbm_smoothed[i, ...] = gaussian_filter(gbm[i, ...], 8)
-    gbm_smoothed = gbm_smoothed > 0.1
-    gbm = gbm.astype('uint8')
-    gbm_smoothed = gbm_smoothed.astype('uint8')
-    return gbm, gbm_smoothed
+def load_feature(data_dir, image_id, feature_str):
+    feature = np.load(data_dir/f'preds_{feature_str}_{image_id}.npy')
+    feature_smoothed = feature.copy()
+    for i in range(feature.shape[0]):
+        feature_smoothed[i, ...] = gaussian_filter(feature[i, ...], 8)
+    feature_smoothed = feature_smoothed > 0.1
+    feature = feature.astype('uint8')
+    feature_smoothed = feature_smoothed.astype('uint8')
+    return feature, feature_smoothed
 
-def calculate_combined_ious(data_dir, bad_chip_label_path):
-    intersection_unet_and_gbm = 0
-    intersection_unet_or_gbm = 0
+def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str):
+    intersection_unet_and_feature = 0
+    intersection_unet_or_feature = 0
     intersection_unet = 0
-    intersection_gbm = 0
-    intersection_unet_and_gbm_smoothed = 0
-    intersection_unet_or_gbm_smoothed = 0
-    intersection_gbm_smoothed = 0
+    intersection_feature = 0
+    intersection_unet_and_feature_smoothed = 0
+    intersection_unet_or_feature_smoothed = 0
+    intersection_feature_smoothed = 0
 
-    union_unet_and_gbm = 0
-    union_unet_or_gbm = 0
+    union_unet_and_feature = 0
+    union_unet_or_feature = 0
     union_unet = 0
-    union_gbm = 0
-    union_unet_and_gbm_smoothed = 0
-    union_unet_or_gbm_smoothed = 0
-    union_gbm_smoothed = 0
+    union_feature = 0
+    union_unet_and_feature_smoothed = 0
+    union_unet_or_feature_smoothed = 0
+    union_feature_smoothed = 0
 
     for start_img in range(0, 11748, 100):
 
@@ -50,50 +50,50 @@ def calculate_combined_ious(data_dir, bad_chip_label_path):
             end_img = start_img + 100
         image_id = f'{start_img:06d}_{end_img:06d}'
 
-        unet = np.load(data_dir/f'preds_{image_id}.npy')
+        unet = np.load(data_dir/f'preds_{unet_str}_{image_id}.npy')
         labels = load_labels(data_dir, image_id, bad_chip_label_path)
-        gbm, gbm_smoothed = load_gbm(data_dir, image_id)
+        feature, feature_smoothed = load_feature(data_dir, image_id, feature_str)
 
-        gbm = gbm.flatten()
-        gbm_smoothed = gbm_smoothed.flatten()
+        feature = feature.flatten()
+        feature_smoothed = feature_smoothed.flatten()
         unet = unet.flatten()
         labels = labels.flatten()
 
         mask = labels<2
 
-        gbm = gbm[mask]
-        gbm_smoothed = gbm_smoothed[mask]
+        feature = feature[mask]
+        feature_smoothed = feature_smoothed[mask]
         unet = unet[mask]
         labels = labels[mask]
 
-        unet_and_gbm = unet & gbm
-        unet_or_gbm = unet | gbm
-        unet_and_gbm_smoothed = unet & gbm_smoothed
-        unet_or_gbm_smoothed = unet | gbm_smoothed
+        unet_and_feature = unet & feature
+        unet_or_feature = unet | feature
+        unet_and_feature_smoothed = unet & feature_smoothed
+        unet_or_feature_smoothed = unet | feature_smoothed
 
-        intersection_unet_and_gbm += np.sum(unet_and_gbm & labels)
-        intersection_unet_or_gbm += np.sum(unet_or_gbm & labels)
+        intersection_unet_and_feature += np.sum(unet_and_feature & labels)
+        intersection_unet_or_feature += np.sum(unet_or_feature & labels)
         intersection_unet += np.sum(unet & labels)
-        intersection_gbm += np.sum(gbm & labels)
-        intersection_unet_and_gbm_smoothed += np.sum(unet_and_gbm_smoothed & labels)
-        intersection_unet_or_gbm_smoothed += np.sum(unet_or_gbm_smoothed & labels)
-        intersection_gbm_smoothed += np.sum(gbm_smoothed & labels)
+        intersection_feature += np.sum(feature & labels)
+        intersection_unet_and_feature_smoothed += np.sum(unet_and_feature_smoothed & labels)
+        intersection_unet_or_feature_smoothed += np.sum(unet_or_feature_smoothed & labels)
+        intersection_feature_smoothed += np.sum(feature_smoothed & labels)
 
-        union_unet_and_gbm += np.sum(unet_and_gbm | labels)
-        union_unet_or_gbm += np.sum(unet_or_gbm | labels)
+        union_unet_and_feature += np.sum(unet_and_feature | labels)
+        union_unet_or_feature += np.sum(unet_or_feature | labels)
         union_unet += np.sum(unet | labels)
-        union_gbm += np.sum(gbm | labels)
-        union_unet_and_gbm_smoothed += np.sum(unet_and_gbm_smoothed | labels)
-        union_unet_or_gbm_smoothed += np.sum(unet_or_gbm_smoothed | labels)
-        union_gbm_smoothed += np.sum(gbm_smoothed | labels)
+        union_feature += np.sum(feature | labels)
+        union_unet_and_feature_smoothed += np.sum(unet_and_feature_smoothed | labels)
+        union_unet_or_feature_smoothed += np.sum(unet_or_feature_smoothed | labels)
+        union_feature_smoothed += np.sum(feature_smoothed | labels)
 
-    print(f'unet | gbm: {intersection_unet_or_gbm/union_unet_or_gbm}')
-    print(f'unet & gbm: {intersection_unet_and_gbm/union_unet_and_gbm}')
-    print(f'unet | gbm_smoothed: {intersection_unet_or_gbm_smoothed/union_unet_or_gbm_smoothed}')
-    print(f'unet & gbm_smoothed: {intersection_unet_and_gbm_smoothed/union_unet_and_gbm_smoothed}')
+    print(f'unet | feature: {intersection_unet_or_feature/union_unet_or_feature}')
+    print(f'unet & feature: {intersection_unet_and_feature/union_unet_and_feature}')
+    print(f'unet | feature_smoothed: {intersection_unet_or_feature_smoothed/union_unet_or_feature_smoothed}')
+    print(f'unet & feature_smoothed: {intersection_unet_and_feature_smoothed/union_unet_and_feature_smoothed}')
     print(f'unet: {intersection_unet/union_unet}')
-    print(f'gbm: {intersection_gbm/union_gbm}')
-    print(f'gbm_smoothed: {intersection_gbm_smoothed/union_gbm_smoothed}')
+    print(f'feature: {intersection_feature/union_feature}')
+    print(f'feature_smoothed: {intersection_feature_smoothed/union_feature_smoothed}')
 
 def parse_commandline_arguments() -> "argparse.Namespace":
     """Parse commandline arguments."""
@@ -109,6 +109,16 @@ def parse_commandline_arguments() -> "argparse.Namespace":
         type=str,
         help='path to the text file containing the list of bad chips',
         default='./cloud-segmentation/data/BAD_CHIP_DATA/BAD_CHIP_LABEL_IDS.txt')
+    parser.add_argument(
+        '--unet_str',
+        type=str,
+        help='string identifying predictions from unet',
+        default='')
+    parser.add_argument(
+        '--feature_str',
+        type=str,
+        help='string identifying predictions from feature based classifier',
+        default='ctb')
 
     args = parser.parse_args()
     return args
@@ -116,4 +126,5 @@ def parse_commandline_arguments() -> "argparse.Namespace":
 
 if __name__=='__main__':
     ARGS = parse_commandline_arguments()
-    calculate_combined_ious(Path(ARGS.data_dir), ARGS.path_to_badchips)
+    calculate_combined_ious(
+        Path(ARGS.data_dir), ARGS.path_to_badchips, ARGS.unet_str, ARGS.feature_str)

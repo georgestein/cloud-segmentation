@@ -124,16 +124,6 @@ def get_pixels_to_sample(npix_to_sample: int) -> list:
 
     return list(pixels_to_sample)
 
-#def get_pixels_to_sample(npix_to_sample: int) -> list:
-#    pixels_to_sample = []
-#    npix_sampled = 0
-#    while npix_sampled < npix_to_sample:
-#        next_pix = random.randrange(PIX_PER_IMAGE)
-#        if next_pix not in pixels_to_sample:
-#            pixels_to_sample += [next_pix]
-#            npix_sampled += 1
-#    return pixels_to_sample
-
 def get_band(band: str, validation: bool=False, name: str=None,
              data_dir: os.PathLike=DATA_DIR) -> np.ndarray:
     if not validation:
