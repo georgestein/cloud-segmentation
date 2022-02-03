@@ -145,6 +145,20 @@ class CloudDataset(torch.utils.data.Dataset):
                 x_arr = np.clip(x_arr, 1, np.inf)
                 
                 # item['opacity'] = opacity_arr
+
+        # Apply data augmentations, if provided
+        if self.labels is not None:
+            # Apply same data augmentations to the label
+            if self.transforms:
+                transformed = self.transforms(image=x_arr, mask=y_arr)
+                x_arr = transformed["image"]
+                y_arr = transformed["mask"]
+                
+            item["label"] = y_arr
+            
+        if self.labels is None:
+            if self.transforms:
+                x_arr = self.transforms(image=x_arr)["image"]
                 
         if self.scale_feature_channels is not None:
             # modify x_arr (N,H,W,C) from band data to custom designed features
@@ -168,7 +182,11 @@ class CloudDataset(torch.utils.data.Dataset):
                 x_arr_out = np.zeros((x_arr.shape[0], x_arr.shape[1], len(self.custom_features)), dtype=x_arr.dtype)
                 for ind, feature in enumerate(self.custom_features):
                     if feature == 'luminosity':
-                        x_arr_out[..., ind] = band_normalizations.feder_scale(np.mean(x_arr, axis=-1))
+                        bi = "B02"
+                        ind_bi = self.band_to_ind[bi]
+                        # x_arr_out[..., ind] = band_normalizations.feder_scale(np.mean(x_arr, axis=-1))
+                        x_arr_out[..., ind] = band_normalizations.feder_scale(x_arr[..., ind_bi])
+
                     elif '-' in feature:
                         bi, bj = feature.split('-')
                         ind_bi = self.band_to_ind[bi]
@@ -187,20 +205,6 @@ class CloudDataset(torch.utils.data.Dataset):
                 x_arr = x_arr_out
                 
 
-        # Apply data augmentations, if provided
-        if self.labels is not None:
-            # Apply same data augmentations to the label
-            if self.transforms:
-                transformed = self.transforms(image=x_arr, mask=y_arr)
-                x_arr = transformed["image"]
-                y_arr = transformed["mask"]
-                
-            item["label"] = y_arr
-            
-        if self.labels is None:
-            if self.transforms:
-                x_arr = self.transforms(image=x_arr)["image"]
-                
         x_arr = np.transpose(x_arr, [2, 0, 1]) # put images in (B, C, H, W)
 
         item["chip"] = x_arr

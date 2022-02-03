@@ -20,12 +20,12 @@ def landcover_per_chip(data_dir: os.PathLike):
         landcover = np.load(data_dir/f'LC_{start_idx:06d}_{end_idx:06d}.npy')
         landcover = landcover.reshape(chip_ids.shape[0], 512*512)
 
-        pixels_per_class = np.zeros((landcover.shape[0], len(lc_classes)), dtype=np.int)
+        pixels_per_class = np.zeros((landcover.shape[0], len(lc_classes)), dtype=np.int32)
         for i, lc_class in enumerate(lc_classes):
             pixels_per_class[:, i] = (landcover == i).sum(-1)
 
-        for i, chip_id in chip_ids:
-            for j, lc_class in lc_classes:
+        for i, chip_id in enumerate(chip_ids):
+            for j, lc_class in enumerate(lc_classes):
                 df.loc[chip_id, lc_class] = pixels_per_class[i, j]
 
     df.to_csv('landcover_class_distribution.csv')

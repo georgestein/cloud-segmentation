@@ -60,7 +60,6 @@ def main(args):
     hparams['OUTPUT_DIR'] = os.path.join(hparams['OUTPUT_DIR'], hparams['segmentation_model'])
     Path(hparams['OUTPUT_DIR']).mkdir(parents=True, exist_ok=True)
 
-    
     # Set up transforms using Albumentations library
     Augs = CloudAugmentations(hparams)
     train_transforms, train_transforms_names = Augs.add_augmentations()
@@ -75,6 +74,13 @@ def main(args):
     cloud_transforms = None
     if hparams['cloud_augment']:
         # Set up transforms using Albumentations library
+        hparams_cloud = hparams.copy()
+        hparams_cloud['sigma_brightness'] = hparams['cloud_sigma_brightness']
+        hparams_cloud['mean_brightness'] = hparams['cloud_mean_brightness']
+        hparams_cloud['uniform_brightness'] = hparams['cloud_uniform_brightness']
+        
+        Augs = CloudAugmentations(hparams_cloud)
+        
         cloud_transforms, cloud_transforms_names = Augs.add_augmentations(hparams['cloud_augmentations'])
         cloud_transforms = A.Compose(cloud_transforms)
         print("cloud transforms: ", cloud_transforms_names)
@@ -190,12 +196,12 @@ def main(args):
         logging_interval='epoch'
     )
 
-    if hparams['strategy'] == 'ddp':
-        strategy = DDPPlugin(find_unused_parameters=False)
-    else:
-        strategy = hparams['strategy']
+    # if hparams['strategy'] == 'ddp':
+    #     strategy = DDPPlugin(find_unused_parameters=False)
+    # else:
+    #     strategy = hparams['strategy']
 
-    # strategy = hparams['strategy']
+    strategy = hparams['strategy']
 
     # Train model
     # "ddp_spawn" needed for interactive jupyter, but best to use "ddp" if not
@@ -292,7 +298,7 @@ if __name__=='__main__':
                         help="Batch size for model training")
     
     parser.add_argument("--loss_function", type=str, default='bce',
-                        help="loss_function to use", choices=['bce', 'dice', 'jaccard'])
+                        help="loss_function to use", choices=['bce', 'dice', 'jaccard', 'focal'])
       
     parser.add_argument("-lr", "--learning_rate", type=float, default=2e-3,
                         help="Learning rate for model optimization")
@@ -335,11 +341,42 @@ if __name__=='__main__':
         
     parser.add_argument("--cloud_augment", action="store_true",
                         help="Use cloud augmentation")
+
+    parser.add_argument("--aug_prob_soft", type=float, default=0.5,
+                        help="Probability of performing simple rotation augmentations")
+    
+    parser.add_argument("--aug_prob_medium", type=float, default=0.8,
+                        help="Probability of performing medium augmentations")
+    
+    parser.add_argument("--aug_prob_hard", type=float, default=0.5,
+                        help="Probability of performing hard augmentations")
+
+    parser.add_argument("--grid_distort_limit", type=float, default=0.3,
+                        help="gd")
+    
+    parser.add_argument("--sigma_brightness", type=float, default=0.1,
+                        help="gd")
+    
+    parser.add_argument("--mean_brightness", type=float, default=1.0,
+                        help="gd")
+    
+    parser.add_argument("--uniform_brightness", action='store_true',
+                        help="Uniform draw rather than gaussian")
+    
+    parser.add_argument("--cloud_sigma_brightness", type=float, default=0.1,
+                        help="gd")
+    
+    parser.add_argument("--cloud_mean_brightness", type=float, default=1.0,
+                        help="gd")
+    
+    parser.add_argument("--cloud_uniform_brightness", action='store_true',
+                        help="Uniform draw rather than gaussian")
+
     
     parser.add_argument("--scale_feature_channels", type=str, default=None,
                         help="Transform from band values to others", choices=['feder_scale', 'true_color', 'log_bands', 'custom'])
     
-    parser.add_argument("--custom_features", nargs='+' , default=["luminosity", "B08-B04", "B03-B11", "B08/B03", "B02/B11", "B08/B11"],
+    parser.add_argument("--custom_features", nargs='+' , default=["luminosity", "B02/B03", "B02/B04", "B02/B08", "B02/B11"],
                         help="bands desired")
     
     parser.add_argument("--load_checkpoint_path", type=str, default=None,

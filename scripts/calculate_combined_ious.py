@@ -3,6 +3,7 @@ from pathlib import Path
 from scipy.ndimage import gaussian_filter
 import matplotlib.pyplot as plt
 import pandas
+import argparse
 
 def load_labels(data_dir, image_id, bad_chip_label_path):
     labels = np.load(data_dir/f'labels_{image_id}.npy')
@@ -44,13 +45,14 @@ def calculate_combined_ious(data_dir, bad_chip_label_path):
 
     for start_img in range(0, 11748, 100):
 
+        print(f"Running on {start_img}")
         if start_img == 11700:
             end_img = 11748
         else:
             end_img = start_img + 100
         image_id = f'{start_img:06d}_{end_img:06d}'
 
-        unet = np.load(data_dir/f'preds_{image_id}.npy')
+        unet = np.load(data_dir/f'preds_unet_{image_id}.npy')
         labels = load_labels(data_dir, image_id, bad_chip_label_path)
         gbm, gbm_smoothed = load_gbm(data_dir, image_id)
 
