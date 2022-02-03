@@ -8,6 +8,7 @@ setup(
     author_email='george.f.stein@gmail.com',
     packages=find_packages(), 
     include_package_data=True,
-    install_requires=[],
+    install_requires=[
+        'catboost==0.26.1'],
     dependency_links=[],
 )
