@@ -16,7 +16,9 @@ class CloudAugmentations:
         self.grid_distort_limit = params.get('grid_distort_limit', 0.3)
 
         self.sigma_brightness = params.get('sigma_brightness', 0.1)
+        self.mean_brightness = params.get('mean_brightness', 1.0)
         self.per_channel_brightness = params.get('per_channel_brightness', False)
+        self.uniform_brightness = params.get('uniform_brightness', False)
 
         # Dictionary to convert between abbreviation and full augmentation string
         self.aug_to_name = {
@@ -97,7 +99,9 @@ class CloudAugmentations:
         self.augmentations_names.append(self.aug_to_name['br'])
         self.augmentations.append(
             ModifyBrightness(
+                mean_brightness=self.mean_brightness,
                 sigma_brightness=self.sigma_brightness,
+                uniform=self.uniform_brightness,
                 per_channel=self.per_channel_brightness,
                 p=self.aug_prob_medium,
             )
@@ -143,13 +147,14 @@ class ModifyBrightness(ImageOnlyTransform):
     """
     Scales brightness by multiplying image by a random draw with sigma=sigma_brightness, mean=1
     """
-    def __init__(self, sigma_brightness=0.1, uniform=False, per_channel=False, 
+    def __init__(self, mean_brightness=1.0, sigma_brightness=0.1, uniform=False, per_channel=False, 
                  always_apply=False, p=0.5):
         super(ModifyBrightness, self).__init__(always_apply, p)
-        
+
+        self.mean_brightness = mean_brightness
         self.sigma_brightness = sigma_brightness
+
         self.uniform = uniform
-        self.mean_brightness = 1.
         self.p = p
         self.per_channel = per_channel
 

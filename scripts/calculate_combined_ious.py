@@ -3,6 +3,9 @@ import argparse
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
+import matplotlib.pyplot as plt
+import pandas
+import argparse
 
 def load_labels(data_dir, image_id, bad_chip_label_path):
     labels = np.load(data_dir/f'labels_{image_id}.npy')
@@ -44,6 +47,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
 
     for start_img in range(0, 11748, 100):
 
+        print(f"Running on {start_img}")
         if start_img == 11700:
             end_img = 11748
         else:
@@ -51,6 +55,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
         image_id = f'{start_img:06d}_{end_img:06d}'
 
         unet = np.load(data_dir/f'preds_{unet_str}_{image_id}.npy')
+
         labels = load_labels(data_dir, image_id, bad_chip_label_path)
         pixelLC = np.load(data_dir/f'LC_{image_id}.npy')
         feature, feature_smoothed = load_feature(data_dir, image_id, feature_str)
