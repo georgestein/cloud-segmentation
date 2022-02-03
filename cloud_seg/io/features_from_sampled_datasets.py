@@ -114,7 +114,7 @@ def download_file(file_name: str) -> None:
     if stderr is not None:
         print(stderr)
 
-def create_chip_mask(bad_chip_path: str=BAD_CHIP_PATH, download: bool=False):
+def create_chip_mask(bad_chip_path: str=BAD_CHIP_PATH, output_str='', download: bool=False):
     """Create a msk of bad chips."""
     bad_chips = get_bad_chips(bad_chip_path)
 
@@ -137,7 +137,7 @@ def create_chip_mask(bad_chip_path: str=BAD_CHIP_PATH, download: bool=False):
     is_bad_chip = np.tile(is_bad_chip, (1, 1, PIX_SAMPLED_PER_IMAGE))
     is_bad_chip = is_bad_chip.flatten()
 
-    np.save('train_features_bad_chip_mask.npy', is_bad_chip)
+    np.save(f'train_features_{output_str}_bad_chip_mask.npy', is_bad_chip)
 
 def get_bad_chips(bad_chip_path):
     """Get the list of bad chips."""
