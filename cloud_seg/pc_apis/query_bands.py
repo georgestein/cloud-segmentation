@@ -166,6 +166,7 @@ def query_bands(
     output_shape: Optional[Tuple[int, int]] = None,
     verbose: Optional[bool] = True,
     want_closest: bool = True,
+    landcover: bool = True,
     max_item_limit: int = 500,
     max_cloud_cover: int = 100,
     max_cloud_shadow_cover: int = 100,
@@ -244,10 +245,13 @@ def query_bands(
     if want_closest:
         # Filter to the best-matching item
         items = list(search.get_items())
-        items = [get_closest_item(items, area_of_interest, timestamp)]
+        print(items)
+
+        if not landcover:
+            items = [get_closest_item(items, area_of_interest, timestamp)]
         dtime = np.array( [ abs( (item.datetime - timestamp).total_seconds() ) for item in items])
         properties = [item.properties for item in items]
-        
+
     else:
         items = get_all_items(search.get_items(), area_of_interest, timestamp)
         print("Found {:d} items matching search parameters".format(len(items)))
@@ -277,48 +281,55 @@ def query_bands(
         )
 
         
+    asset_found = False
+    while asset_found is False:
+        assets = {}
+        for it, item in enumerate(items):
+            bounds = check_projection(geotiff, item, verbose)
 
-    assets = {}
-    for it, item in enumerate(items):
-        bounds = check_projection(geotiff, item, verbose)
+            # Load the matching PySTAC asset
+            for asset_key in asset_keys:
+                print("DEBUG ", asset_key)
+                try:
+                    asset = np.array(
+                        rioxarray.open_rasterio(pc.sign(item.assets[asset_key].href))
+                        .rio.clip_box(*bounds)
+                        .load()
+                        .transpose("y", "x", "band")
+                    )
+                    if landcover:
+                        print(f"Found asset on item {item.id}")
+                        
+                        asset_found = True
+                except:
+                    #print(item.id == '55H-2020')
+                    #np.savetxt(f"../data/BAD_CHIP_DATA/bad_lc_stac_ids/{item.id}", item.id)
+                    print("No data in bounds for item, asset_key = ", item, asset_key)
+                    asset = np.full((512, 512), 0, dtype=np.uint8)
 
-        # Load the matching PySTAC asset
-        for asset_key in asset_keys:
-
-            try:
-                asset = np.array(
-                    rioxarray.open_rasterio(pc.sign(item.assets[asset_key].href))
-                    .rio.clip_box(*bounds)
-                    .load()
-                    .transpose("y", "x", "band")
-                )
                 
-            except:
-                print("No data in bounds for item, asset_key = ", item, asset_key)
-                asset = np.full((512, 512), 0, dtype=np.uint8)
+                # Reshape to singe-band image and resize if needed
+                asset = Image.fromarray(asset.squeeze())
+                if output_shape:
+                    asset = asset.resize(output_shape)
+                    asset = np.array(asset)
+                if len(items) == 1:
+                    assets[asset_key] = asset
+                    assets[asset_key + "_time"] = str(item.datetime)
+                    assets[asset_key + "_dtime"] = dtime[it]
+                    assets[asset_key + "_properties"] = properties[it]
                     
-            # Reshape to singe-band image and resize if needed
-            asset = Image.fromarray(asset.squeeze())
-            if output_shape:
-                asset = asset.resize(output_shape)
-            asset = np.array(asset)
-            if len(items) == 1:
-                assets[asset_key] = asset
-                assets[asset_key + "_time"] = str(item.datetime)
-                assets[asset_key + "_dtime"] = dtime[it]
-                assets[asset_key + "_properties"] = properties[it]
+                else:
+                    if it == 0:
+                        assets[asset_key] = []
+                        assets[asset_key + "_time"] = []
+                        assets[asset_key + "_dtime"] = []
+                        assets[asset_key + "_properties"] = []
 
-            else:
-                if it == 0:
-                    assets[asset_key] = []
-                    assets[asset_key + "_time"] = []
-                    assets[asset_key + "_dtime"] = []
-                    assets[asset_key + "_properties"] = []
-
-                assets[asset_key].append(asset)
-                assets[asset_key + "_time"].append(str(item.datetime))
-                assets[asset_key + "_dtime"].append(dtime[it])
-                assets[asset_key + "_properties"].append(properties[it])
+                    assets[asset_key].append(asset)
+                    assets[asset_key + "_time"].append(str(item.datetime))
+                    assets[asset_key + "_dtime"].append(dtime[it])
+                    assets[asset_key + "_properties"].append(properties[it])
 
     return assets, items
 

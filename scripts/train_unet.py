@@ -325,7 +325,7 @@ if __name__=='__main__':
     parser.add_argument("--encoder_name", type=str, default='resnet18',
                         help="Encocoder architecture to use", choices=['efficientnet-b0','efficientnet-b3','efficientnet-b5',
                                                                        'resnet18', 'resnet34', 'resnet50',
-                                                                       'vgg19_bn',
+                                                                       'vgg19_bn', 'tu-xception65',
                                                                       'tu-efficientnetv2_m'])
     parser.add_argument("--weights", type=none_or_str, default=None,
                         help="Pretrained_weights architecture to use")

@@ -56,64 +56,6 @@ def parse_commandline_arguments() -> "argparse.Namespace":
     args = parser.parse_args()
     return args
 
-if __name__ == '__main__':
-    ARGS = parse_commandline_arguments()
-
-    MAX_POOL_SIZE = ARGS.max_pool_size
-    DATA_DIR, PREDICTION_DIR = load_data_parameters(ARGS)
-    MODEL_PATHS, MODEL_NAMES, FEATURE_LIST, OUTPUT_STR = load_model_parameters(ARGS)
-
-    if not PREDICTION_DIR.exists():
-        PREDICTION_DIR.mkdir()
-    for i, MODEL_NAME in enumerate(MODEL_NAMES):
-        if not (PREDICTION_DIR/MODEL_NAME).exists():
-            shutil.copyfile(MODEL_PATHS[i], PREDICTION_DIR/MODEL_NAME)
-
-    IMAGE_IDS = input_image_ids(DATA_DIR, REFBAND)
-    CLFS = [load(MODEL_PATH) for MODEL_PATH in MODEL_PATHS]
-
-def feature_classification(image_id):
-    """Classify a single image."""
-    image_features = Features(set_type='val', file_name=image_id, data_dir=DATA_DIR)
-    for feature in FEATURE_LIST:
-        image_features.add(feature)
-
-    if len(CLFS) == 1:
-        predictions = CLFS[0].predict(image_features.value)
-    else:
-        # Predict based on LC
-        image_LC = Features(set_type='val', file_name=image_id, data_dir=DATA_DIR)
-        image_LC.add('LC')
-
-        predictions = np.zeros((image_features.npixels), np.float32)
-
-        for LC in range(11):
-            mask = image_LC.value == LC
-            if mask.sum() > 0:
-                predictions[mask] = CLFS[LC].predict(image_features.value[mask, :])
-
-    predictions = predictions.reshape(-1, 512, 512)
-
-    np.save(PREDICTION_DIR/f'preds_{OUTPUT_STR}_{image_id}.npy', predictions)
-
-def run_feature_classification():
-    """Run feature classification using pools."""
-    if MAX_POOL_SIZE <= 1:
-        for image_id in tqdm.tqdm(IMAGE_IDS):
-            feature_classification(image_id)
-
-    else:
-        # Simple threading with pool and .map
-        cpus = multiprocessing.cpu_count()
-        pool = multiprocessing.Pool(min(cpus, MAX_POOL_SIZE))
-        print(f"Number of available cpus = {cpus}")
-
-        pool.map(feature_classification, IMAGE_IDS)
-
-        pool.close()
-        pool.join()
-
-
 def get_image_id(image: str):
     """Get the image id from an image path."""
     return re.findall(
@@ -125,6 +67,7 @@ def input_image_ids(data_dir, name):
     images = sorted(data_dir.glob(f'{name}_*.npy'))
     image_ids = [get_image_id(str(image)) for image in images]
     return image_ids
+
 
 def load_data_parameters(args):
     """Define directories for chips and predictions."""
@@ -160,6 +103,67 @@ def load_model_parameters(args):
     model_paths = [model_dir/model_name for model_name in model_names]
 
     return model_paths, model_names, feature_list, output_str
+
+
+if __name__=='__main__':
+    ARGS = parse_commandline_arguments()
+
+    MAX_POOL_SIZE = ARGS.max_pool_size
+    DATA_DIR, PREDICTION_DIR = load_data_parameters(ARGS)
+    MODEL_PATHS, MODEL_NAMES, FEATURE_LIST, OUTPUT_STR = load_model_parameters(ARGS)
+    
+    if not PREDICTION_DIR.exists():
+        PREDICTION_DIR.mkdir()
+    for i, MODEL_NAME in enumerate(MODEL_NAMES):
+        if not (PREDICTION_DIR/MODEL_NAME).exists():
+            shutil.copyfile(MODEL_PATHS[i], PREDICTION_DIR/MODEL_NAME)
+        
+    IMAGE_IDS = input_image_ids(DATA_DIR, REFBAND)
+    CLFS = [load(MODEL_PATH) for MODEL_PATH in MODEL_PATHS]
+
+
+
+def feature_classification(image_id):
+    """Classify a single image."""
+    image_features = Features(set_type='val', file_name=image_id, data_dir=DATA_DIR)
+    for feature in FEATURE_LIST:
+        image_features.add(feature)
+
+    if len(CLFS) == 1:
+        predictions = CLFS[0].predict(image_features.value)
+    else:
+        # Predict based on LC
+        image_LC = Features(set_type='val', file_name=image_id, data_dir=DATA_DIR)
+        image_LC.add('LC')
+
+        predictions = np.zeros((image_features.npixels), np.float32)
+
+        for LC in range(11):
+            mask = image_LC.value.squeeze(1) == LC
+            if mask.sum() > 0:
+                predictions[mask] = CLFS[LC].predict(image_features.value[mask, :])
+
+    predictions = predictions.reshape(-1, 512, 512)
+
+    np.save(PREDICTION_DIR/f'preds_{OUTPUT_STR}_{image_id}.npy', predictions)
+
+def run_feature_classification():
+    """Run feature classification using pools."""
+    if MAX_POOL_SIZE <= 1:
+        for image_id in tqdm.tqdm(IMAGE_IDS):
+            feature_classification(image_id)
+
+    else:
+        # Simple threading with pool and .map
+        cpus = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(min(cpus, MAX_POOL_SIZE))
+        print(f"Number of available cpus = {cpus}")
+
+        pool.map(feature_classification, IMAGE_IDS)
+
+        pool.close()
+        pool.join()
+
 
 if __name__ == '__main__':
     run_feature_classification()

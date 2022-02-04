@@ -60,18 +60,20 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
         pixelLC = np.load(data_dir/f'LC_{image_id}.npy')
         feature, feature_smoothed = load_feature(data_dir, image_id, feature_str)
 
-        feature = feature.flatten()
-        feature_smoothed = feature_smoothed.flatten()
-        unet = unet.flatten()
-        labels = labels.flatten()
+        feature_all = feature.flatten()
+        feature_smoothed_all = feature_smoothed.flatten()
+        unet_all = unet.flatten()
+        labels_all = labels.flatten()
+        pixelLC_all = pixelLC.flatten()
 
         for LC in range(11):
-            mask = (labels < 2) & (pixelLC == LC)
 
-            feature = feature[mask]
-            feature_smoothed = feature_smoothed[mask]
-            unet = unet[mask]
-            labels = labels[mask]
+            mask = (labels_all < 2) & (pixelLC_all == LC)
+
+            feature = feature_all[mask]
+            feature_smoothed = feature_smoothed_all[mask]
+            unet = unet_all[mask]
+            labels = labels_all[mask]
 
             unet_and_feature = unet & feature
             unet_or_feature = unet | feature

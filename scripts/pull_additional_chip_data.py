@@ -77,6 +77,8 @@ parser.add_argument("--query_range_minutes", type=float, default=60 * 24 * 365 *
 parser.add_argument("--want_closest", action="store_true",
                     help="If true return only return closest chip to query (possibly query chip itself). \
                     Else return closest non-matching chips")
+parser.add_argument("--landcover", action="store_true",
+                    help="If true return only return closest chip to query (possibly query chip itself)")
 
 parser.add_argument("--new_location", action="store_true",
                     help="Pull data from new location")
@@ -156,6 +158,7 @@ class PystacAsset:
         
         self.query_range_minutes = params.get("query_range_minutes", 60 * 24 * 365 * 5)
         self.want_closest = params.get("want_closest", False)
+        self.landcover = params.get("landcover", False)
         self.max_cloud_cover = params.get("max_cloud_cover", 1.0)
         self.max_cloud_shadow_cover = params.get("max_cloud_shadow_cover", 1.0)
         self.max_item_limit = params.get("max_item_limit", 5)
@@ -280,6 +283,7 @@ class PystacAsset:
                     query_range_minutes=self.query_range_minutes,
                     verbose=self.verbose,
                     want_closest=self.want_closest,
+                    landcover=self.landcover,
                     max_cloud_cover=self.max_cloud_cover,
                     max_cloud_shadow_cover=self.max_cloud_shadow_cover,
                     max_item_limit=self.max_item_limit,

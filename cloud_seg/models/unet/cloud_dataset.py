@@ -116,13 +116,7 @@ class CloudDataset(torch.utils.data.Dataset):
                 # with rasterio.open(opacity_path) as lp:
                 #     opacity_arr = lp.read(1).astype("float32")  
                 opacity_arr = get_array(opacity_path)
-                # get smoothed version of label to smooth edges between new clouds and original chip
-                
-                y_arr_wide = gaussian_filter(y_arr, sigma=self.sigma_label_smooth)
-                y_arr_wide = ((y_arr_wide > 0.05)*1).astype("float32")
 
-                y_arr_smooth = gaussian_filter(y_arr_wide, sigma=self.sigma_label_smooth)
-    
                 # load cloud bands
                 band_arrs = []
                 for band in self.bands:
@@ -135,10 +129,21 @@ class CloudDataset(torch.utils.data.Dataset):
                 
                 # Apply special augmentations to clouds and cloud labels
                 if self.cloud_transforms is not None:
-                    transformed = self.cloud_transforms(image=x_arr_clouds, mask=y_arr)
-                    x_arr_clouds = transformed["image"]
-                    y_arr = transformed["mask"]
+                    
+                    # want to transform both y_arr and opacity_arr together
+                    y_and_opacity =  np.stack([y_arr, opacity_arr], axis=-1)
                 
+                    transformed = self.cloud_transforms(image=x_arr_clouds, mask=y_and_opacity)
+                    x_arr_clouds = transformed["image"]
+                    y_arr = transformed["mask"][..., 0]
+                    opacity_arr = transformed["mask"][..., 1]
+
+                # get smoothed version of label to smooth edges between new clouds and original chip
+                y_arr_wide = gaussian_filter(y_arr, sigma=self.sigma_label_smooth)
+                y_arr_wide = ((y_arr_wide > 0.05)*1).astype("float32")
+
+                y_arr_smooth = gaussian_filter(y_arr_wide, sigma=self.sigma_label_smooth)
+    
                 # add clouds to cloudless image, differently where opacity==1 and where opacity==0
                 x_arr = ( (x_arr_clouds * opacity_arr[..., None])
                          +  (x_arr + x_arr_clouds * y_arr_smooth[..., None]) * (1-opacity_arr[..., None]))

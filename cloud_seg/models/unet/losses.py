@@ -95,9 +95,9 @@ class WeightedFocalLoss(torch.nn.Module):
         
         pt = torch.exp(-BCE_loss)
         
-        brightness_weight = targets * dim_cloud_weight(data[:, 1]) + (1-targets) * bright_land_weight(data[:, 1]) 
+        # brightness_weight = targets * dim_cloud_weight(data[:, 1]) + (1-targets) * bright_land_weight(data[:, 1]) 
             
         # print(BCE_loss.size(), at.size(), pt.size()) 
         # print(at, pt, BCE_loss)
-        F_loss = at*(1-pt)**self.gamma * BCE_loss * brightness_weight
+        F_loss = at*(1-pt)**self.gamma * BCE_loss #* brightness_weight
         return F_loss
