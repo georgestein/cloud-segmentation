@@ -248,7 +248,9 @@ def get_chips_in_npy(ichip_start, ichip_end, bands=["B02", "B03", "B04", "B08"])
     labels_mean = np.zeros(nchips, dtype=np.float32)
     
     if params['add_predictions']:
-        preds = np.zeros((nchips, npixx, npixy), dtype=np.uint8)
+        # preds = np.zeros((nchips, npixx, npixy), dtype=np.uint8)
+        preds = np.zeros((nchips, npixx, npixy), dtype=np.float32)
+
         preds_mean  = np.zeros(nchips, dtype=np.float32)
         intersection = np.zeros(nchips, dtype=np.float32)
         union = np.zeros(nchips, dtype=np.float32)
@@ -279,8 +281,8 @@ def get_chips_in_npy(ichip_start, ichip_end, bands=["B02", "B03", "B04", "B08"])
         if params['add_predictions']:
 
             preds_i = np.array(Image.open(PREDICTION_DIR/f"{chip.chip_id}.tif"))
-            preds_i = (preds_i > 0.5)*1
-            preds[ichip] = preds_i.astype(np.int8)
+            # preds_i = (preds_i > 0.5)*1
+            preds[ichip] = preds_i #.astype(np.int8)
 
             intersection[ichip], union[ichip] = intersection_and_union(preds[ichip], labels[ichip])
             preds_mean[ichip] = np.mean(preds[ichip])

@@ -128,6 +128,9 @@ class CloudDataset(torch.utils.data.Dataset):
                 x_arr_clouds = np.stack(band_arrs, axis=-1)
                 
                 # Apply special augmentations to clouds and cloud labels
+                if self.transforms:
+                    x_arr = self.transforms(image=x_arr)["image"]
+                
                 if self.cloud_transforms is not None:
                     
                     # want to transform both y_arr and opacity_arr together
@@ -154,7 +157,7 @@ class CloudDataset(torch.utils.data.Dataset):
         # Apply data augmentations, if provided
         if self.labels is not None:
             # Apply same data augmentations to the label
-            if self.transforms:
+            if self.transforms and label_path != 'cloudless':
                 transformed = self.transforms(image=x_arr, mask=y_arr)
                 x_arr = transformed["image"]
                 y_arr = transformed["mask"]

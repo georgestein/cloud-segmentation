@@ -73,7 +73,7 @@ parser.add_argument("--extract_clouds", action="store_true",
 parser.add_argument("--cloud_extract_model", type=str, default='opacity',
                     help="Cloud model to use", choices=['opacity', 'additive']) 
 
-parser.add_argument("--brightness_correct_model", type=str, default=None,
+parser.add_argument("--brightness_correct_model", type=str, default='mlp',
                     help="Brightness correcting model to use", choices=[None, 'median', 'mlp']) 
 
 parser.add_argument("--frac_all_cloud_keep", type=float, default=0.1,
@@ -163,7 +163,7 @@ def construct_cloudbank_dataframe(df_val, params: dict):
 
 def load_validation_dataframe(isplit: int, params: dict):
     
-    file_name_in = f"validate_features_meta_cv{isplit}.csv"
+    file_name_in = f"validate_features_meta_cv{isplit}_new.csv"
     # file_name_in = f"validate_features_meta_seed{params['seed']}_cv{isplit}.csv"
 
     df_val = pd.read_csv(DATA_DIR_OUT / file_name_in)
@@ -174,7 +174,7 @@ def save_dataframe_to_disk(df_meta, isplit, params: dict):
     
     print(f"\nSaving cloudbank from split {isplit} to disk at:\n{str(DATA_DIR_OUT)}")
 
-    file_name_out = f"cloudbank_meta_cv{isplit}.csv"
+    file_name_out = f"cloudbank_meta_cv{isplit}_new.csv"
     # file_name_out = f"cloudbank_meta_seed{params['seed']}_cv{isplit}.csv"
 
     df_meta.to_csv(DATA_DIR_OUT / file_name_out, index=False)
@@ -325,7 +325,7 @@ def make_clouds(cloudless_dir):
     files = sorted(glob.glob(str(DATA_DIR_CLOUDLESS / chip_id / '*')))
     
     try:
-        images_cloudless_all = load_npz_arrays_for_chip(chip_id, params)
+        images_cloudless_all = load_npz_arrays_for_chip(chip_id)
     except:
         return
     
@@ -376,7 +376,7 @@ def make_clouds(cloudless_dir):
 
 def run_make_clouds(params: dict):
     
-    cloudless_dirs_all = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
+    cloudless_dirs_all = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))[::-1]
     # Check .npz data exists on disk 
 
     cloudless_dirs = []

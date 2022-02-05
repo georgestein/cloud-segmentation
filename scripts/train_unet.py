@@ -39,6 +39,8 @@ def none_or_str(value):
     return value
 
 def main(args):
+    # train_data_string = ""   
+    train_data_string = "_new"
     
     hparams = vars(args)
     if hparams['verbose']: print("Parameters are: ", hparams)
@@ -98,6 +100,7 @@ def main(args):
     model_out_name += f"_{hparams['loss_function']}"
     model_out_name += f"_{hparams['augmentations']}"
     model_out_name += f"_customfeats_{hparams['scale_feature_channels']}"
+    # model_out_name += f"_depth{hparams['encoder_depth']}"
     model_out_name += f"_{curent_time}"
     model_out_name += f"_cv{hparams['cross_validation_split']}"
 
@@ -112,8 +115,8 @@ def main(args):
     Path(hparams['MODEL_DIR']).mkdir(parents=True, exist_ok=True)
     
     # Load Data
-    val_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_features_meta_cv{hparams['cross_validation_split']}.csv")
-    val_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_labels_meta_cv{hparams['cross_validation_split']}.csv")
+    val_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_features_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
+    val_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_labels_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
     
     # shuffle validation, such that each batch will have samples from different locations,
     # as validation_dataloader has shuffle=False
@@ -122,8 +125,8 @@ def main(args):
     
     if hparams['verbose']: print(val_y.head())
     
-    train_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_meta_cv{hparams['cross_validation_split']}.csv")
-    train_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_meta_cv{hparams['cross_validation_split']}.csv")
+    train_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
+    train_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
 
     if not hparams['cloud_augment']:
         
@@ -131,15 +134,15 @@ def main(args):
     
     if hparams['cloud_augment']:
 
-        train_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
-        train_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
+        train_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_cloudless_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
+        train_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_cloudless_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
 
         # duplicate cloudless chips
         for i in range(1):
             train_y = train_y.append(train_y_cloudless, ignore_index=True)
             train_x = train_x.append(train_x_cloudless, ignore_index=True)
 
-        df_cloudbank = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"cloudbank_meta_cv{hparams['cross_validation_split']}.csv")
+        df_cloudbank = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"cloudbank_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
 
     if hparams['test_run']:
         nuse = hparams['test_run_nchips']
@@ -302,7 +305,10 @@ if __name__=='__main__':
       
     parser.add_argument("-lr", "--learning_rate", type=float, default=2e-3,
                         help="Learning rate for model optimization")
-  
+    
+    parser.add_argument("-wd", "--weight_decay", type=float, default=5e-4,
+                        help="Learning rate for model optimization")
+    
     parser.add_argument("--optimizer", type=str, default='ADAM',
                         help="Optimizer to use", choices=['ADAM', 'SGD', 'ADAMW'])
     
@@ -327,6 +333,10 @@ if __name__=='__main__':
                                                                        'resnet18', 'resnet34', 'resnet50',
                                                                        'vgg19_bn', 'tu-xception65',
                                                                       'tu-efficientnetv2_m'])
+    
+    parser.add_argument("--encoder_depth", type=int, default=5,
+                        help="Encoder depth")
+    
     parser.add_argument("--weights", type=none_or_str, default=None,
                         help="Pretrained_weights architecture to use")
     

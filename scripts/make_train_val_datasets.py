@@ -71,6 +71,9 @@ def construct_cloudless_datafame(df_val, params: dict):
     
     Dataloader will then draw random index to load in cloud files and cloud labels from cloud chips, and add clouds to images
     """
+    
+    df_meta = pd.read_csv(DATA_DIR / "train_metadata.csv")
+
     ### FIRST ADD CLOUDLESS CHIPS THAT HAVE CLOUDY VERSIONS IN ORIGINAL DATA
     all_chips = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
 
@@ -91,9 +94,51 @@ def construct_cloudless_datafame(df_val, params: dict):
     if num_cloudless_chips < 0:
         num_cloudless_chips = len(all_chips)
         
-    # choose chip (locations) to use
-    chips_use = np.random.choice(all_chips, size=num_cloudless_chips, replace=False)
+    # # choose chips (locations) to use
+    # chips_use = np.random.choice(all_chips, size=num_cloudless_chips, replace=False)
 
+    # Try to select cloudless chips evenly across all locations
+    chip_locations = np.array([df_meta["location"][df_meta["chip_id"] == os.path.basename(i)].to_numpy()[0] for i in all_chips])
+    all_locations = np.unique(chip_locations)
+
+    total_chip_num = 0
+    chip_ids_by_location = []
+    for iloc, loc in enumerate(all_locations):
+
+        chips_loc = list(np.array(all_chips)[chip_locations == loc])
+        chip_ids_by_location.append(chips_loc)
+        total_chip_num += len(chips_loc)
+    
+    chips_use = []
+    num_chips = 0
+    while num_chips < min(num_cloudless_chips, total_chip_num):
+        iloc = np.random.randint(0, len(chip_ids_by_location), 1)[0]
+        if len(chip_ids_by_location[iloc])==0:
+            continue
+
+        ichip = np.random.randint(0, len(chip_ids_by_location[iloc]), 1)[0]
+
+        chipi = chip_ids_by_location[iloc][ichip]
+        chips_use.append(chipi)
+        del chip_ids_by_location[iloc][ichip]
+
+        num_chips += 1        
+    
+    
+    # ADD IN TRICKY LOCATIONS
+    wc = np.loadtxt("../data/BAD_CHIP_DATA/WATER_CHIPS.txt", dtype=str)
+    sc = np.loadtxt("../data/BAD_CHIP_DATA/SNOW_CHIPS.txt", dtype=str)
+
+    tricky_chips = np.concatenate([wc, sc])
+    tricky_chips = np.array([ os.path.join(str(DATA_DIR_CLOUDLESS), i) for i in tricky_chips if os.path.exists(os.path.join(str(DATA_DIR_CLOUDLESS), i, '0/B04.tif')) ])
+
+    chips_use = np.concatenate([chips_use, tricky_chips])
+    chips_use = np.unique(chips_use)
+    
+    # Again remove cloudless chips that have cloudy versions in validation sample
+    in_val = [os.path.basename(i) in df_val['chip_id'].to_numpy() for i in chips_use]
+    chips_use = np.array([chip for ichip, chip in enumerate(chips_use) if not in_val[ichip]] )
+    
     train_x_cloudless = []
     for ichip, chip in enumerate(chips_use):
         if params['verbose'] and ichip % 1000==0: print(ichip)
@@ -239,15 +284,15 @@ def save_train_val_to_disk(train_x, train_y, val_x, val_y, train_x_cloudless, tr
     print(f"Saving training and validation sets from split {isplit} to disk")
     
     # f"train_features_meta_seed{params['seed']}_cv{isplit}.csv"
-    train_x.to_csv(DATA_DIR_OUT / f"train_features_meta_cv{isplit}.csv", index=False)
-    train_y.to_csv(DATA_DIR_OUT / f"train_labels_meta_cv{isplit}.csv", index=False)
+    train_x.to_csv(DATA_DIR_OUT / f"train_features_meta_cv{isplit}_new.csv", index=False)
+    train_y.to_csv(DATA_DIR_OUT / f"train_labels_meta_cv{isplit}_new.csv", index=False)
 
-    val_x.to_csv(DATA_DIR_OUT / f"validate_features_meta_cv{isplit}.csv", index=False)
-    val_y.to_csv(DATA_DIR_OUT / f"validate_labels_meta_cv{isplit}.csv", index=False)
+    val_x.to_csv(DATA_DIR_OUT / f"validate_features_meta_cv{isplit}_new.csv", index=False)
+    val_y.to_csv(DATA_DIR_OUT / f"validate_labels_meta_cv{isplit}_new.csv", index=False)
   
     if train_x_cloudless is not None:
-        train_x_cloudless.to_csv(DATA_DIR_OUT / f"train_features_cloudless_meta_cv{isplit}.csv", index=False)
-        train_y_cloudless.to_csv(DATA_DIR_OUT / f"train_labels_cloudless_meta_cv{isplit}.csv", index=False)
+        train_x_cloudless.to_csv(DATA_DIR_OUT / f"train_features_cloudless_meta_cv{isplit}_new.csv", index=False)
+        train_y_cloudless.to_csv(DATA_DIR_OUT / f"train_labels_cloudless_meta_cv{isplit}_new.csv", index=False)
 
 def main():
     

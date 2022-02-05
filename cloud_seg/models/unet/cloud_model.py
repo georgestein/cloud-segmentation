@@ -71,6 +71,11 @@ class CloudModel(pl.LightningModule):
         self.segmentation_model = self.hparams.get("segmentation_model", "unet")
         self.encoder_name = self.hparams.get("encoder_name", "resnet18")
         self.weights = self.hparams.get("weights", None)
+        
+        self.encoder_depth = self.hparams.get("encoder_depth", 5)
+        self.decoder_channels = [2**(i+4) for i in range(self.encoder_depth)][::-1]
+        # self.decoder_channels = [64,64,32,16,16]
+
         self.decoder_attention_type = self.hparams.get("decoder_attention_type", None)
         
         self.scale_feature_channels = self.hparams.get("scale_feature_channels", None)
@@ -83,6 +88,8 @@ class CloudModel(pl.LightningModule):
         self.scheduler = self.hparams.get("scheduler", "PLATEAU")
         
         self.learning_rate = self.hparams.get("learning_rate", 1e-3)
+        self.weight_decay = self.hparams.get("weight_decay", 5e-4)
+
         self.momentum = self.hparams.get("momentum", 0.9)
         self.T_0 = self.hparams.get("T_0", 10)
         self.eta_min = self.hparams.get("eta_min", 1e-5)
@@ -387,7 +394,7 @@ class CloudModel(pl.LightningModule):
             optimizer = torch.optim.AdamW(
                 self.model.parameters(),
                 lr=self.learning_rate,
-                weight_decay=1e-4,
+                weight_decay=self.weight_decay,
             )
             # sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=10)
 
@@ -444,6 +451,8 @@ class CloudModel(pl.LightningModule):
                 encoder_name=self.encoder_name,
                 encoder_weights=self.weights,
                 in_channels=self.num_channels,
+                encoder_depth=self.encoder_depth,
+                decoder_channels=self.decoder_channels,
                 classes=1,
                 decoder_attention_type=self.decoder_attention_type,
             )
