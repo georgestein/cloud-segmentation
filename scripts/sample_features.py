@@ -7,5 +7,5 @@ bands = ['B02', 'B03', 'B04', 'B08',
          'SCL', 'LC']
 
 
-create_compiled_dataset(bands[0], 'unetpreds', sample_by_LC=False, smooth_sigma=None)
-create_compiled_dataset(bands[0], 'unetpreds', sample_by_LC=True, smooth_sigma=None)
+create_compiled_dataset([bands[0]], 'unetpreds', sample_by_LC=False, smooth_sigma=None)
+create_compiled_dataset([bands[0]], 'unetpreds', sample_by_LC=True, smooth_sigma=None)
