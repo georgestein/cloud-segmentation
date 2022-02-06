@@ -45,7 +45,7 @@ def create_compiled_dataset(bands, output_str, sample_by_LC=True, download=False
     max_idx = len(train_labels)
     for i in range(nfiles):
 
-        label_name = f'labels_{i*100:06d}_{(i+1)*100:06d}.npy'
+        label_name = f'preds_unet_{i*100:06d}_{(i+1)*100:06d}.npy'
 
         if download:
             download_file(label_name)
