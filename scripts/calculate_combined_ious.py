@@ -7,7 +7,45 @@ import matplotlib.pyplot as plt
 import pandas
 import argparse
 
-UNET_CUTOFF = 0.3
+UNET_CUTOFF = 0.5
+
+def improve_iou(pred, pcut_hard=0.5, pcut_soft=0.3, sigma_smooth=10):#, chip_id, data_dir_out="../data/maximize_iou_predictions/"):
+    """
+    By visual examination of labels, I see:
+
+    1.) Bright stand-alone clouds have (relatively) sharp boundaries.
+        Predictions are quite certain, and look very similar to true label
+
+    2.) Dimmer/wispy clouds have much less sharp boundaries, as if someone just lazily drew a polygon around it. 
+    Predictions here are not as certain, and in general are more lumpy than the "true" labels
+
+    So, to maximize IoU:
+
+    1.) When prediction is sure its a cloud, trust it
+    2.) When prediction is less certain//clumpy/whispy, smooth it, then trust it with lower cutoff
+    """
+    
+ 
+    pred_in = pred.copy()
+    pred_out_hard = np.zeros_like(pred_in).astype("uint8")
+
+    mask_hard = pred_in > pcut_hard
+    pred_out_hard[mask_hard] = 1.
+
+    # lessen hard predictions
+    pred_in[mask_hard] = pcut_soft
+
+    pred_in_smooth = gaussian_filter(pred_in, sigma_smooth)
+
+    mask_soft = pred_in_smooth > pcut_soft
+
+    pred_out_soft = pred_out_hard.copy()
+    pred_out_soft[mask_soft] = 1.
+
+    pred_final = np.clip(pred_out_hard+pred_out_soft, 0, 1)
+    
+    return pred_final
+             
 
 def load_labels(data_dir, image_id, bad_chip_label_path):
     labels = np.load(data_dir/f'labels_{image_id}.npy')
@@ -34,9 +72,10 @@ def load_unet(data_dir, image_id, feature_str):
     unet = np.load(data_dir/f'preds_{feature_str}_{image_id}.npy')
     unet_smoothed = unet.copy()
     for i in range(unet.shape[0]):
-        unet_smoothed[i, ...] = gaussian_filter( (unet[i, ...] > UNET_CUTOFF)*1., 4)
+        unet_smoothed[i, ...] = improve_iou(unet[i, ...])
+    
     unet = (unet > UNET_CUTOFF) * 1
-    unet_smoothed = (unet_smoothed > 0.1) * 1.
+    #unet_smoothed = (unet_smoothed > 0.1) * 1.
     unet = unet.astype('uint8')
     unet_smoothed = unet_smoothed.astype('uint8')
     return unet, unet_smoothed
@@ -60,7 +99,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
     union_unet_or_feature_smoothed = [0]*11
     union_feature_smoothed = [0]*11
 
-    for start_img in range(0,11748, 100):
+    for start_img in range(0, 11748, 100):
 
         print(f"Running on {start_img}")
         if start_img == 11700:

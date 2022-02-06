@@ -22,6 +22,7 @@ except ImportError:
     from losses import intersection_and_union
     from losses import dice_loss, power_jaccard, WeightedFocalLoss
     from plotting_tools import plot_prediction_grid
+   
     
 class CloudModel(pl.LightningModule):
     def __init__(
@@ -31,10 +32,12 @@ class CloudModel(pl.LightningModule):
         y_train: Optional[pd.DataFrame] = None,
         x_val: Optional[pd.DataFrame] = None,
         y_val: Optional[pd.DataFrame] = None,
-        cloudbank: Optional[pd.DataFrame] = None,
+        train_cloudbank: Optional[pd.DataFrame] = None,
+        val_cloudbank: Optional[pd.DataFrame] = None,
         train_transforms = None,
         val_transforms = None,
-        cloud_transforms = None,
+        train_cloud_transforms = None,
+        val_cloud_transforms = None,
         hparams: dict = {},
     ):
         """
@@ -89,6 +92,8 @@ class CloudModel(pl.LightningModule):
         
         self.learning_rate = self.hparams.get("learning_rate", 1e-3)
         self.weight_decay = self.hparams.get("weight_decay", 5e-4)
+        
+        self.use_npy_labels = self.hparams.get("use_npy_labels", False)
 
         self.momentum = self.hparams.get("momentum", 0.9)
         self.T_0 = self.hparams.get("T_0", 10)
@@ -118,18 +123,20 @@ class CloudModel(pl.LightningModule):
 
         self.train_transform = train_transforms
         self.val_transform = val_transforms
-        self.cloud_transform = cloud_transforms
-        
+        self.train_cloud_transform = train_cloud_transforms
+        self.val_cloud_transform = val_cloud_transforms
+       
         # Instantiate datasets, model, and trainer params if provided
         self.train_dataset = CloudDataset(
             x_paths=x_train,
             bands=self.bands,
             y_paths=y_train,
             transforms=self.train_transform,
-            cloudbank=cloudbank,
-            cloud_transforms=self.cloud_transform,
+            cloudbank=train_cloudbank,
+            cloud_transforms=self.train_cloud_transform,
             scale_feature_channels=self.scale_feature_channels,
             custom_features=self.custom_features,
+            use_npy_labels=self.use_npy_labels,
         )
         
         self.val_dataset = CloudDataset(
@@ -137,8 +144,11 @@ class CloudModel(pl.LightningModule):
             bands=self.bands,
             y_paths=y_val,
             transforms=self.val_transform,
+            cloudbank=val_cloudbank,
+            cloud_transforms=self.val_cloud_transform,
             scale_feature_channels=self.scale_feature_channels,
             custom_features=self.custom_features,
+            use_npy_labels=False,
         )
         
         # define some performance metrics using torchmetrics

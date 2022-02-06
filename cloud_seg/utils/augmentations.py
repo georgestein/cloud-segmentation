@@ -28,6 +28,7 @@ class CloudAugmentations:
             'tr': 'Transpose',
             'rc': 'RandomSizedCrop',
             'gd': 'GridDistortion',
+            'el': 'ElasticTransform',
             'gb': 'GaussianBlur',
             'br': 'Brightness',
             'nr': 'Normalize',
@@ -43,6 +44,7 @@ class CloudAugmentations:
             'tr': self.add_Transpose,
             'rc': self.add_RandomSizedCrop,
             'gd': self.add_GridDistortion,
+            'el': self.add_ElasticTransform,
             'gb': self.add_GaussianBlur,
             'br': self.add_Brightness,
             'nr': self.add_Normalize,
@@ -86,8 +88,18 @@ class CloudAugmentations:
         self.augmentations_names.append(self.aug_to_name['gd'])
         self.augmentations.append(
             A.GridDistortion(
-                p=self.aug_prob_hard,
+                p=self.aug_prob_medium,
                 distort_limit=self.grid_distort_limit,
+            )
+        )
+
+    def add_ElasticTransform(self):
+        self.augmentations_names.append(self.aug_to_name['el'])
+        self.augmentations.append(
+            A.ElasticTransform(
+                p=self.aug_prob_hard,
+                alpha=120, sigma=120 * 0.05,
+                alpha_affine=120 * 0.03
             )
         )
 

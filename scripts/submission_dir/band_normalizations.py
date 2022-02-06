@@ -1,6 +1,6 @@
 import numpy as np
 
-def feder_scale(feature, xmean=2775., kappa=1.0, inv=False):
+def feder_scale(feature, xmean=500., kappa=2.0, inv=False):
 
     if not inv:
         return 2*(feature/xmean)/((feature/xmean)+kappa) - 1

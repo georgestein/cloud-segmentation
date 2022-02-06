@@ -19,9 +19,9 @@ import argparse
 import albumentations as A
 
 try:
-    from cloud_seg.models.unet.cloud_model import CloudModel
-    from cloud_seg.models.unet.cloud_dataset import CloudDataset
-    from cloud_seg.utils.augmentations import CloudAugmentations
+    from cloud_segg.models.unet.cloud_model import CloudModel
+    from cloud_segg.models.unet.cloud_dataset import CloudDataset
+    from cloud_segg.utils.augmentations import CloudAugmentations
 except ImportError:
     from cloud_model import CloudModel
     from cloud_dataset import CloudDataset

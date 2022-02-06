@@ -24,7 +24,6 @@ class CloudDataset(torch.utils.data.Dataset):
     dictionary containing chip ids, image tensors, and
     label masks (where available).
     """
-
     def __init__(
         self,
         x_paths: pd.DataFrame,
@@ -35,6 +34,7 @@ class CloudDataset(torch.utils.data.Dataset):
         custom_features: str = None,
         cloudbank: Optional[pd.DataFrame] = None,
         cloud_transforms: Optional[list] = None,
+        use_npy_labels: bool = False,
     ):
         """
         Instantiate the CloudDataset class.
@@ -62,6 +62,8 @@ class CloudDataset(torch.utils.data.Dataset):
         self.transforms = transforms
         self.scale_feature_channels = scale_feature_channels
         self.custom_features = custom_features
+        
+        self.use_npy_labels = use_npy_labels
         
         self.bands = bands
         self.band_to_ind = {k: v for v, k in enumerate(bands)}
@@ -95,7 +97,18 @@ class CloudDataset(torch.utils.data.Dataset):
             if (label_path != 'none') and (label_path != 'cloudless'):
                 # with rasterio.open(label_path) as lp:
                 #     y_arr = lp.read(1).astype("float32")
-                y_arr = get_array(label_path)    
+                
+                # check if extension .tif or .npy
+                
+                filename, file_ext = os.path.splitext(label_path)
+                if self.use_npy_labels:
+                    filename, file_ext = os.path.splitext(label_path)
+                    y_arr = np.load(filename+'.npy')
+                    pcut = np.random.normal(0.5, 0.1)
+                    y_arr = (y_arr > pcut).astype(np.float32)
+                                        
+                else:
+                    y_arr = get_array(label_path)
 
             if label_path == 'cloudless':
                 # This is a cloudless image, so sample a random cloud chip from cloudbank

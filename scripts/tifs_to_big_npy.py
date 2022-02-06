@@ -42,13 +42,15 @@ DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/" #sorted/"
 
 # PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
 # PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_cloudaugment_resnet18_bce_vfrc_customfeats_None_2022-01-24/predictions/"
-# PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/submission_dir/predictions"
-PREDICTION_DIR = DATA_DIR / "predictions_best"
+#PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/submission_best/predictions"
+PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/submission_dir/predictions"
+
+#PREDICTION_DIR = DATA_DIR / "predictions_best"
 
 TRAIN_FEATURES = DATA_DIR / "train_features"
 TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"
 
-TRAIN_LABELS = DATA_DIR / "train_labels"
+TRAIN_LABELS = DATA_DIR / "train_labels/original"
 
 BANDS = ["B02", "B03", "B04", "B08"]
 BANDS_NEW = []
@@ -281,6 +283,7 @@ def get_chips_in_npy(ichip_start, ichip_end, bands=["B02", "B03", "B04", "B08"])
         if params['add_predictions']:
 
             preds_i = np.array(Image.open(PREDICTION_DIR/f"{chip.chip_id}.tif"))
+            #preds_i = np.load(PREDICTION_DIR/f"{chip.chip_id}.npy")
             # preds_i = (preds_i > 0.5)*1
             preds[ichip] = preds_i #.astype(np.int8)
 

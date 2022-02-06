@@ -63,7 +63,7 @@ def construct_dataframe(params: dict):
     print(f"\nNumber of chips in dataset is {len(df_meta)}")
     return df_meta
 
-def construct_cloudless_datafame(df_val, params: dict):
+def construct_cloudless_datafame(df_val, params: dict, make_val=False):
     """
     construct a dataframe full of cloudless chips
     
@@ -79,8 +79,11 @@ def construct_cloudless_datafame(df_val, params: dict):
 
     # remove cloudless chips that have cloudy versions in validation sample
     in_val = [os.path.basename(i) in df_val['chip_id'].to_numpy() for i in all_chips]
-    all_chips = [chip for ichip, chip in enumerate(all_chips) if not in_val[ichip]] 
-
+    if not make_val:
+        all_chips = [chip for ichip, chip in enumerate(all_chips) if not in_val[ichip]] 
+    if make_val:
+        all_chips = [chip for ichip, chip in enumerate(all_chips) if in_val[ichip]] 
+       
     # remove chips that had good performance in previous model (leaving desert, water, etc...)
     if params['select_worst_pred_chips']:
         chip_ids_worst_preds = np.loadtxt("../data/BAD_CHIP_DATA/worst_preds_chip_ids.txt", dtype=str)
@@ -124,7 +127,6 @@ def construct_cloudless_datafame(df_val, params: dict):
 
         num_chips += 1        
     
-    
     # ADD IN TRICKY LOCATIONS
     wc = np.loadtxt("../data/BAD_CHIP_DATA/WATER_CHIPS.txt", dtype=str)
     sc = np.loadtxt("../data/BAD_CHIP_DATA/SNOW_CHIPS.txt", dtype=str)
@@ -137,9 +139,12 @@ def construct_cloudless_datafame(df_val, params: dict):
     
     # Again remove cloudless chips that have cloudy versions in validation sample
     in_val = [os.path.basename(i) in df_val['chip_id'].to_numpy() for i in chips_use]
-    chips_use = np.array([chip for ichip, chip in enumerate(chips_use) if not in_val[ichip]] )
-    
-    train_x_cloudless = []
+    if not make_val:
+        chips_use = [chip for ichip, chip in enumerate(chips_use) if not in_val[ichip]] 
+    if make_val:
+        chips_use = [chip for ichip, chip in enumerate(chips_use) if in_val[ichip]] 
+       
+    df_x_cloudless = []
     for ichip, chip in enumerate(chips_use):
         if params['verbose'] and ichip % 1000==0: print(ichip)
         
@@ -151,19 +156,18 @@ def construct_cloudless_datafame(df_val, params: dict):
 
         chip_id = '{:s}_nc_{:s}'.format(os.path.basename(chip), os.path.basename(chip_use_path))
         feature_cols = [chip_use_path + f"/{band}.tif" for band in params['bands_use']]
-        train_x_cloudless.append([chip_id]+feature_cols)
+        df_x_cloudless.append([chip_id]+feature_cols)
 
-    train_x_cloudless = pd.DataFrame(train_x_cloudless, columns=df_val.columns)
+    df_x_cloudless = pd.DataFrame(df_x_cloudless, columns=df_val.columns)
 
     # add new cloudless images to train_y_new
-    data = np.c_[np.array(train_x_cloudless['chip_id']),
-                 np.array(['cloudless']*len(train_x_cloudless['chip_id']))]
-    train_y_cloudless = pd.DataFrame(data, columns=['chip_id', 'label_path'])
+    data = np.c_[np.array(df_x_cloudless['chip_id']),
+                 np.array(['cloudless']*len(df_x_cloudless['chip_id']))]
+    df_y_cloudless = pd.DataFrame(data, columns=['chip_id', 'label_path'])
 
-    print(f"Number of cloudless chips from original locations not overlapping with validation set is {len(train_x_cloudless)}")
+    print(f"Number of cloudless chips from original locations not overlapping with validation set is {len(df_x_cloudless)}")
 
-    if params['verbose']: print(train_y_cloudless.head(), train_y_cloudless.tail())
-    
+    if params['verbose']: print(df_y_cloudless.head(), df_y_cloudless.tail())
     
     ### NOW ADD CLOUDLESS CHIPS FROM NEW LOCATIONS
     all_chips = sorted(glob.glob(str(DATA_DIR_CLOUDLESS_NEW_LOCATIONS) + '/*'))
@@ -175,29 +179,29 @@ def construct_cloudless_datafame(df_val, params: dict):
     # choose chip (locations) to use
     chips_use = np.random.choice(all_chips, size=num_cloudless_chips, replace=False)
     
-    train_x_cloudless_new_locations = []
+    df_x_cloudless_new_locations = []
     for ichip, chip in enumerate(chips_use):
         if params['verbose'] and ichip % 1000==0: print(ichip)
         
         chip_id = f"{os.path.basename(chip)}"
         feature_cols = [chip + f"/{band}.tif" for band in params['bands_use']]
-        train_x_cloudless_new_locations.append([chip_id]+feature_cols)
+        df_x_cloudless_new_locations.append([chip_id]+feature_cols)
  
-    train_x_cloudless_new_locations = pd.DataFrame(train_x_cloudless_new_locations, columns=df_val.columns)
+    df_x_cloudless_new_locations = pd.DataFrame(df_x_cloudless_new_locations, columns=df_val.columns)
 
     # add new cloudless images to train_y_new
-    data = np.c_[np.array(train_x_cloudless_new_locations['chip_id']),
-                 np.array(['cloudless']*len(train_x_cloudless_new_locations['chip_id']))]
-    train_y_cloudless_new_locations = pd.DataFrame(data, columns=['chip_id', 'label_path'])
+    data = np.c_[np.array(df_x_cloudless_new_locations['chip_id']),
+                 np.array(['cloudless']*len(df_x_cloudless_new_locations['chip_id']))]
+    df_y_cloudless_new_locations = pd.DataFrame(data, columns=['chip_id', 'label_path'])
 
-    print(f"Number of cloudless chips from new locations is {len(train_x_cloudless_new_locations)}")
+    print(f"Number of cloudless chips from new locations is {len(df_x_cloudless_new_locations)}")
 
-    train_x_cloudless = train_x_cloudless.append(train_x_cloudless_new_locations, ignore_index=True)
-    train_y_cloudless = train_y_cloudless.append(train_y_cloudless_new_locations, ignore_index=True)
+    df_x_cloudless = df_x_cloudless.append(df_x_cloudless_new_locations, ignore_index=True)
+    df_y_cloudless = df_y_cloudless.append(df_y_cloudless_new_locations, ignore_index=True)
 
-    print(f"Total number of cloudless chips from original and new locations is {len(train_x_cloudless)}")
+    print(f"Total number of cloudless chips from original and new locations is {len(df_x_cloudless)}")
 
-    return train_x_cloudless, train_y_cloudless
+    return df_x_cloudless, df_y_cloudless
 
 def split_train_val(df, params):
     np.random.seed(params['seed'])  # set a seed for reproducibility
@@ -271,28 +275,35 @@ def split_train_val(df, params):
 
         train_x_cloudless, train_y_cloudless = None, None
         if params['construct_cloudless']:
-            train_x_cloudless, train_y_cloudless = construct_cloudless_datafame(val_x, params)
+            train_x_cloudless, train_y_cloudless = construct_cloudless_datafame(val_x, params, make_val=False)
+            
+            params['num_cloudless_chips'] = params['num_cloudless_chips_val']            
+            params['num_cloudless_chips_new_locations'] = params['num_cloudless_chips_new_locations_val']
+            val_x_cloudless, val_y_cloudless = construct_cloudless_datafame(val_x, params, make_val=True)
             
         if not params['dont_save_to_disk']:
-            save_train_val_to_disk(train_x, train_y, val_x, val_y, train_x_cloudless, train_y_cloudless, params, isplit)
+            save_train_val_to_disk(train_x, train_y, val_x, val_y, train_x_cloudless, train_y_cloudless, val_x_cloudless, val_y_cloudless, params, isplit)
 
     return train_x, train_y, val_x, val_y, train_x_cloudless, train_y_cloudless
 
 
-def save_train_val_to_disk(train_x, train_y, val_x, val_y, train_x_cloudless, train_y_cloudless, params, isplit):
+def save_train_val_to_disk(train_x, train_y, val_x, val_y, train_x_cloudless, train_y_cloudless,  val_x_cloudless, val_y_cloudless, params, isplit):
     
     print(f"Saving training and validation sets from split {isplit} to disk")
     
     # f"train_features_meta_seed{params['seed']}_cv{isplit}.csv"
-    train_x.to_csv(DATA_DIR_OUT / f"train_features_meta_cv{isplit}_new.csv", index=False)
-    train_y.to_csv(DATA_DIR_OUT / f"train_labels_meta_cv{isplit}_new.csv", index=False)
+    train_x.to_csv(DATA_DIR_OUT / f"train_features_meta_cv{isplit}.csv", index=False)
+    train_y.to_csv(DATA_DIR_OUT / f"train_labels_meta_cv{isplit}.csv", index=False)
 
-    val_x.to_csv(DATA_DIR_OUT / f"validate_features_meta_cv{isplit}_new.csv", index=False)
-    val_y.to_csv(DATA_DIR_OUT / f"validate_labels_meta_cv{isplit}_new.csv", index=False)
+    val_x.to_csv(DATA_DIR_OUT / f"validate_features_meta_cv{isplit}.csv", index=False)
+    val_y.to_csv(DATA_DIR_OUT / f"validate_labels_meta_cv{isplit}.csv", index=False)
   
     if train_x_cloudless is not None:
-        train_x_cloudless.to_csv(DATA_DIR_OUT / f"train_features_cloudless_meta_cv{isplit}_new.csv", index=False)
-        train_y_cloudless.to_csv(DATA_DIR_OUT / f"train_labels_cloudless_meta_cv{isplit}_new.csv", index=False)
+        train_x_cloudless.to_csv(DATA_DIR_OUT / f"train_features_cloudless_meta_cv{isplit}.csv", index=False)
+        train_y_cloudless.to_csv(DATA_DIR_OUT / f"train_labels_cloudless_meta_cv{isplit}.csv", index=False)
+        
+        train_x_cloudless.to_csv(DATA_DIR_OUT / f"validate_features_cloudless_meta_cv{isplit}.csv", index=False)
+        train_y_cloudless.to_csv(DATA_DIR_OUT / f"validate_labels_cloudless_meta_cv{isplit}.csv", index=False)
 
 def main():
     
@@ -315,10 +326,16 @@ def main():
     
     parser.add_argument("--num_cloudless_chips", type=int, default=-1,
                         help="Number of cloudless samples to include")
-    
+                   
+    parser.add_argument("--num_cloudless_chips_val", type=int, default=-1,
+                        help="Number of cloudless samples to include")
+       
     parser.add_argument("--num_cloudless_chips_new_locations", type=int, default=1000,
                         help="Number of cloudless samples from new locations not in original training to include") 
-        
+                   
+    parser.add_argument("--num_cloudless_chips_new_locations_val", type=int, default=500,
+                        help="Number of cloudless samples from new locations not in original training to include") 
+                
     parser.add_argument("--dont_save_to_disk", action="store_true",
                         help="save training and validation sets to disk")
     

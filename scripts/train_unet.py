@@ -40,7 +40,7 @@ def none_or_str(value):
 
 def main(args):
     # train_data_string = ""   
-    train_data_string = "_new"
+    # train_data_string = "_new"
     
     hparams = vars(args)
     if hparams['verbose']: print("Parameters are: ", hparams)
@@ -73,20 +73,32 @@ def main(args):
 
     print("Train, val transforms: ", train_transforms_names, val_transforms_names)
     
-    cloud_transforms = None
+    train_cloud_transforms = None
     if hparams['cloud_augment']:
         # Set up transforms using Albumentations library
         hparams_cloud = hparams.copy()
         hparams_cloud['sigma_brightness'] = hparams['cloud_sigma_brightness']
         hparams_cloud['mean_brightness'] = hparams['cloud_mean_brightness']
         hparams_cloud['uniform_brightness'] = hparams['cloud_uniform_brightness']
-        
+        hparams_cloud['min_max_crop'] = hparams['cloud_min_max_crop']
+
         Augs = CloudAugmentations(hparams_cloud)
         
-        cloud_transforms, cloud_transforms_names = Augs.add_augmentations(hparams['cloud_augmentations'])
-        cloud_transforms = A.Compose(cloud_transforms)
-        print("cloud transforms: ", cloud_transforms_names)
-    
+        train_cloud_transforms, train_cloud_transforms_names = Augs.add_augmentations(hparams['cloud_augmentations'])
+        train_cloud_transforms = A.Compose(train_cloud_transforms)
+        print("train cloud transforms: ", train_cloud_transforms_names)
+        
+    val_cloud_transforms = None
+    if hparams['cloud_augment_val']:
+        # Set up transforms using Albumentations library
+        hparams_val_cloud = hparams.copy()
+        hparams_val_cloud['aug_prob_soft'] = 1.0
+        Augs = CloudAugmentations(hparams_val_cloud)
+        
+        val_cloud_transforms, val_cloud_transforms_names = Augs.add_augmentations(hparams_val_cloud['cloud_augmentations_val'])
+        val_cloud_transforms = A.Compose(val_cloud_transforms)
+        print("val cloud transforms: ", val_transforms_names)
+        
     # set up logger and model outputs to have meaningful name
 
     dataset_str = 'originaldata'
@@ -115,8 +127,8 @@ def main(args):
     Path(hparams['MODEL_DIR']).mkdir(parents=True, exist_ok=True)
     
     # Load Data
-    val_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_features_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
-    val_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_labels_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
+    val_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_features_meta_cv{hparams['cross_validation_split']}.csv")
+    val_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_labels_meta_cv{hparams['cross_validation_split']}.csv")
     
     # shuffle validation, such that each batch will have samples from different locations,
     # as validation_dataloader has shuffle=False
@@ -125,24 +137,40 @@ def main(args):
     
     if hparams['verbose']: print(val_y.head())
     
-    train_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
-    train_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
+    train_x = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_meta_cv{hparams['cross_validation_split']}.csv")
+    train_y = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_meta_cv{hparams['cross_validation_split']}.csv")
 
-    if not hparams['cloud_augment']:
-        
-        df_cloudbank = None
-    
+    train_cloudbank = None
     if hparams['cloud_augment']:
 
-        train_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_cloudless_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
-        train_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_cloudless_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
+        train_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
+        train_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
+        
+        train_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_features_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
+        train_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_labels_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
 
         # duplicate cloudless chips
         for i in range(1):
             train_y = train_y.append(train_y_cloudless, ignore_index=True)
             train_x = train_x.append(train_x_cloudless, ignore_index=True)
 
-        df_cloudbank = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"cloudbank_meta_cv{hparams['cross_validation_split']}{train_data_string}.csv")
+        train_cloudbank = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"train_cloudbank_meta_cv{hparams['cross_validation_split']}.csv")
+
+    val_cloudbank = None
+    if hparams['cloud_augment']:
+
+        val_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_features_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
+        val_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_labels_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
+        
+        val_x_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_features_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
+        val_y_cloudless = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_labels_cloudless_meta_cv{hparams['cross_validation_split']}.csv")
+
+        # duplicate cloudless chips
+        for i in range(1):
+            val_y = val_y.append(train_y_cloudless, ignore_index=True)
+            val_x = val_x.append(train_x_cloudless, ignore_index=True)
+
+        val_cloudbank = pd.read_csv(DATA_DIR_MODEL_TRAINING / f"validate_cloudbank_meta_cv{hparams['cross_validation_split']}.csv")
 
     if hparams['test_run']:
         nuse = hparams['test_run_nchips']
@@ -153,7 +181,8 @@ def main(args):
         val_x = val_x.iloc[:nuse]
         val_x = val_x.iloc[:nuse]
 
-        df_cloudbank = df_cloudbank.iloc[:nuse] if df_cloudbank is not None else None
+        train_cloudbank = train_cloudbank.iloc[:nuse] if df_cloudbank is not None else None
+        val_cloudbank = val_cloudbank.iloc[:nuse] if df_cloudbank is not None else None
         
 
     # Set up models and callbacks
@@ -163,10 +192,12 @@ def main(args):
         y_train=train_y,
         x_val=val_x,
         y_val=val_y,
-        cloudbank=df_cloudbank,
+        train_cloudbank=train_cloudbank,
+        val_cloudbank=val_cloudbank,
         train_transforms=train_transforms,
         val_transforms=val_transforms,
-        cloud_transforms=cloud_transforms,
+        train_cloud_transforms=train_cloud_transforms,
+        val_cloud_transforms=val_cloud_transforms,
         hparams=hparams,
     )
         
@@ -210,6 +241,7 @@ def main(args):
     # "ddp_spawn" needed for interactive jupyter, but best to use "ddp" if not
     trainer = pl.Trainer(
         gpus=-1,
+        num_nodes=4,
         # deterministic=True,
         fast_dev_run=False,
         # profiler="simple",
@@ -332,7 +364,7 @@ if __name__=='__main__':
                         help="Encocoder architecture to use", choices=['efficientnet-b0','efficientnet-b3','efficientnet-b5',
                                                                        'resnet18', 'resnet34', 'resnet50',
                                                                        'vgg19_bn', 'tu-xception65',
-                                                                      'tu-efficientnetv2_m'])
+                                                                      'tu-efficientnetv2_m', 'tu-resnest200e'])
     
     parser.add_argument("--encoder_depth", type=int, default=5,
                         help="Encoder depth")
@@ -346,10 +378,16 @@ if __name__=='__main__':
     parser.add_argument("--augmentations", type=str, default='vfhfrrtrrcgdbr',
                         help="training augmentations to use")
     
-    parser.add_argument("--cloud_augmentations", type=str, default='vfhfrrtrrcgdbr',
+    parser.add_argument("--cloud_augmentations", type=str, default='vfhfrrtrrcgdelbr',
                         help="training augmentations to use for cloudmix")
-        
+    
+    parser.add_argument("--cloud_augmentations_val", type=str, default='vfhf',
+                        help="training augmentations to use for cloudmix")
+                
     parser.add_argument("--cloud_augment", action="store_true",
+                        help="Use cloud augmentation")
+    
+    parser.add_argument("--cloud_augment_val", action="store_true",
                         help="Use cloud augmentation")
 
     parser.add_argument("--aug_prob_soft", type=float, default=0.5,
@@ -363,6 +401,9 @@ if __name__=='__main__':
 
     parser.add_argument("--grid_distort_limit", type=float, default=0.3,
                         help="gd")
+
+    parser.add_argument("--min_max_crop", nargs='+' , default=[341, 512],
+                        help="bands desired")
     
     parser.add_argument("--sigma_brightness", type=float, default=0.1,
                         help="gd")
@@ -382,7 +423,9 @@ if __name__=='__main__':
     parser.add_argument("--cloud_uniform_brightness", action='store_true',
                         help="Uniform draw rather than gaussian")
 
-    
+    parser.add_argument("--cloud_min_max_crop", nargs='+' , default=[256, 512],
+                        help="bands desired")
+        
     parser.add_argument("--scale_feature_channels", type=str, default=None,
                         help="Transform from band values to others", choices=['feder_scale', 'true_color', 'log_bands', 'custom'])
     
@@ -392,7 +435,9 @@ if __name__=='__main__':
     parser.add_argument("--load_checkpoint_path", type=str, default=None,
                         help="checkpoint path to initialize training from")
 
-  
+    parser.add_argument("--use_npy_labels", action='store_true',
+                        help=".tif (uint8) .npy (float32) ") 
+                  
     args = parser.parse_args()
     
     main(args)

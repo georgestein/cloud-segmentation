@@ -104,7 +104,7 @@ params['outsize'] = [512, 512]
 
 if params['verbose']: print("Parameters are: ", params)
     
-def construct_cloudbank_dataframe(df_val, params: dict):
+def construct_cloudbank_dataframe(df_val, params: dict, make_val=False):
     """Construct cloudbank using all chips that do not overlap with validation set"""
     np.random.seed(params['seed'])
     
@@ -116,7 +116,12 @@ def construct_cloudbank_dataframe(df_val, params: dict):
 
     # remove cloud chips that are from validation sample
     in_val = [os.path.basename(i) in df_val['chip_id'].to_numpy() for i in cloud_chips]
-    cloud_chips = [chip for ichip, chip in enumerate(cloud_chips) if not in_val[ichip]] 
+    
+    if not make_val:
+        cloud_chips = [chip for ichip, chip in enumerate(cloud_chips) if not in_val[ichip]] 
+    if make_val:
+        cloud_chips = [chip for ichip, chip in enumerate(cloud_chips) if in_val[ichip]] 
+        
     print(f"\nTotal number of cloud chips not overlapping validation chips is {len(cloud_chips)}")
 
     # Get label stats to use to remove certain chips
@@ -170,12 +175,15 @@ def load_validation_dataframe(isplit: int, params: dict):
           
     return(df_val)
 
-def save_dataframe_to_disk(df_meta, isplit, params: dict):
+def save_dataframe_to_disk(df_meta, isplit, params: dict, make_val=False):
     
     print(f"\nSaving cloudbank from split {isplit} to disk at:\n{str(DATA_DIR_OUT)}")
 
-    file_name_out = f"cloudbank_meta_cv{isplit}_new.csv"
-    # file_name_out = f"cloudbank_meta_seed{params['seed']}_cv{isplit}.csv"
+    if not make_val:
+        file_name_out = f"train_cloudbank_meta_cv{isplit}.csv"
+
+    if make_val:
+        file_name_out = f"validate_cloudbank_meta_cv{isplit}.csv"
 
     df_meta.to_csv(DATA_DIR_OUT / file_name_out, index=False)
 
@@ -422,14 +430,16 @@ def main():
     if params['extract_clouds']:
         # Extract all clouds from pairs of cloudy and cloudless chips
         run_make_clouds(params)
-    
+
+    """
     for isplit in range(params['num_cross_validation_splits']):
         df_val = load_validation_dataframe(isplit, params)
         
-        df_meta = construct_cloudbank_dataframe(df_val, params)
+        for make_val in [True, False]:
+            df_meta = construct_cloudbank_dataframe(df_val, params, make_val=make_val)
 
-        if not params['dont_save_to_disk']:
-            save_dataframe_to_disk(df_meta, isplit, params)
-  
+            if not params['dont_save_to_disk']:
+                save_dataframe_to_disk(df_meta, isplit, params, make_val=make_val)
+    """
 if __name__=="__main__":
     main()
