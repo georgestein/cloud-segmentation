@@ -73,7 +73,7 @@ parser.add_argument("--extract_clouds", action="store_true",
 parser.add_argument("--cloud_extract_model", type=str, default='opacity',
                     help="Cloud model to use", choices=['opacity', 'additive']) 
 
-parser.add_argument("--brightness_correct_model", type=str, default=None,
+parser.add_argument("--brightness_correct_model", type=str, default='mlp',
                     help="Brightness correcting model to use", choices=[None, 'median', 'mlp']) 
 
 parser.add_argument("--frac_all_cloud_keep", type=float, default=0.1,
@@ -104,7 +104,7 @@ params['outsize'] = [512, 512]
 
 if params['verbose']: print("Parameters are: ", params)
     
-def construct_cloudbank_dataframe(df_val, params: dict):
+def construct_cloudbank_dataframe(df_val, params: dict, make_val=False):
     """Construct cloudbank using all chips that do not overlap with validation set"""
     np.random.seed(params['seed'])
     
@@ -116,7 +116,12 @@ def construct_cloudbank_dataframe(df_val, params: dict):
 
     # remove cloud chips that are from validation sample
     in_val = [os.path.basename(i) in df_val['chip_id'].to_numpy() for i in cloud_chips]
-    cloud_chips = [chip for ichip, chip in enumerate(cloud_chips) if not in_val[ichip]] 
+    
+    if not make_val:
+        cloud_chips = [chip for ichip, chip in enumerate(cloud_chips) if not in_val[ichip]] 
+    if make_val:
+        cloud_chips = [chip for ichip, chip in enumerate(cloud_chips) if in_val[ichip]] 
+        
     print(f"\nTotal number of cloud chips not overlapping validation chips is {len(cloud_chips)}")
 
     # Get label stats to use to remove certain chips
@@ -163,19 +168,22 @@ def construct_cloudbank_dataframe(df_val, params: dict):
 
 def load_validation_dataframe(isplit: int, params: dict):
     
-    file_name_in = f"validate_features_meta_cv{isplit}.csv"
+    file_name_in = f"validate_features_meta_cv{isplit}_new.csv"
     # file_name_in = f"validate_features_meta_seed{params['seed']}_cv{isplit}.csv"
 
     df_val = pd.read_csv(DATA_DIR_OUT / file_name_in)
           
     return(df_val)
 
-def save_dataframe_to_disk(df_meta, isplit, params: dict):
+def save_dataframe_to_disk(df_meta, isplit, params: dict, make_val=False):
     
     print(f"\nSaving cloudbank from split {isplit} to disk at:\n{str(DATA_DIR_OUT)}")
 
-    file_name_out = f"cloudbank_meta_cv{isplit}.csv"
-    # file_name_out = f"cloudbank_meta_seed{params['seed']}_cv{isplit}.csv"
+    if not make_val:
+        file_name_out = f"train_cloudbank_meta_cv{isplit}.csv"
+
+    if make_val:
+        file_name_out = f"validate_cloudbank_meta_cv{isplit}.csv"
 
     df_meta.to_csv(DATA_DIR_OUT / file_name_out, index=False)
 
@@ -325,7 +333,7 @@ def make_clouds(cloudless_dir):
     files = sorted(glob.glob(str(DATA_DIR_CLOUDLESS / chip_id / '*')))
     
     try:
-        images_cloudless_all = load_npz_arrays_for_chip(chip_id, params)
+        images_cloudless_all = load_npz_arrays_for_chip(chip_id)
     except:
         return
     
@@ -376,7 +384,7 @@ def make_clouds(cloudless_dir):
 
 def run_make_clouds(params: dict):
     
-    cloudless_dirs_all = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))
+    cloudless_dirs_all = sorted(glob.glob(str(DATA_DIR_CLOUDLESS) + '/*'))[::-1]
     # Check .npz data exists on disk 
 
     cloudless_dirs = []
@@ -422,14 +430,16 @@ def main():
     if params['extract_clouds']:
         # Extract all clouds from pairs of cloudy and cloudless chips
         run_make_clouds(params)
-    
+
+    """
     for isplit in range(params['num_cross_validation_splits']):
         df_val = load_validation_dataframe(isplit, params)
         
-        df_meta = construct_cloudbank_dataframe(df_val, params)
+        for make_val in [True, False]:
+            df_meta = construct_cloudbank_dataframe(df_val, params, make_val=make_val)
 
-        if not params['dont_save_to_disk']:
-            save_dataframe_to_disk(df_meta, isplit, params)
-  
+            if not params['dont_save_to_disk']:
+                save_dataframe_to_disk(df_meta, isplit, params, make_val=make_val)
+    """
 if __name__=="__main__":
     main()

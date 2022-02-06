@@ -71,3 +71,33 @@ class DiceLoss(torch.nn.Module):
         dice = (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)  
         
         return 1 - dice
+
+
+def bright_land_weight(x):
+    return x + 2
+
+def dim_cloud_weight(x):
+    return 2 - x
+    
+
+class WeightedFocalLoss(torch.nn.Module):
+    "Non class weighted version of Focal Loss if gamma=0.5"
+    def __init__(self, alpha=.5, gamma=2): 
+        # Cloud cover (label==1) is ~66%
+        super(WeightedFocalLoss, self).__init__()
+        self.alpha = torch.tensor([alpha, 1-alpha]).cuda()
+        self.gamma = gamma
+
+    def forward(self, data, inputs, targets):
+        BCE_loss = torch.nn.BCEWithLogitsLoss(reduction="none")(inputs, targets.float())
+        
+        at = self.alpha[targets]#.data.view(inputs.shape[0], -1)]
+        
+        pt = torch.exp(-BCE_loss)
+        
+        # brightness_weight = targets * dim_cloud_weight(data[:, 1]) + (1-targets) * bright_land_weight(data[:, 1]) 
+            
+        # print(BCE_loss.size(), at.size(), pt.size()) 
+        # print(at, pt, BCE_loss)
+        F_loss = at*(1-pt)**self.gamma * BCE_loss #* brightness_weight
+        return F_loss

@@ -23,9 +23,9 @@ import glob
 import albumentations as A
 
 try:
-    from cloud_seg.models.unet.cloud_model import CloudModel
-    from cloud_seg.models.unet.cloud_dataset import CloudDataset
-    from cloud_seg.utils.augmentations import CloudAugmentations
+    from cloud_segg.models.unet.cloud_model import CloudModel
+    from cloud_segg.models.unet.cloud_dataset import CloudDataset
+    from cloud_segg.utils.augmentations import CloudAugmentations
     import pull_additional_chip_data
 except ImportError:
     from cloud_model import CloudModel
@@ -87,7 +87,10 @@ def compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, pre
     load in predictions for Unet and/or Boosting model(s),
     and save to final prediction dir
     """
-    for chip_id in metadata['chip_id']:
+    for ichip_id, chip_id in enumerate(metadata['chip_id']):
+        if ichip_id % 100 == 0:
+            logger.info(f"Output final predictions for chip {ichip_id}")
+            
         preds_unet = []
         for icross_validation in range(hparams['num_cross_validation_splits']):
             #pred_unet = np.load(unet_predictions_dir / f"{chip_id}.npy")
@@ -244,6 +247,7 @@ def main(
         make_gbm_predictions(metadata, gbm_predictions_dir)
 
     # compile predictions from each model into final prediction
+    logger.info("Compiling different model predictions into final submission")
     compile_predictions(metadata, unet_predictions_dir, gbm_predictions_dir, predictions_dir, hparams)
 
     logger.info(f"""Saved {len(list(predictions_dir.glob("*.tif")))} predictions""")

@@ -4,10 +4,7 @@ import torch
 from scipy.ndimage import gaussian_filter
 import numpy as np
 
-try:
-    from cloud_seg.models.unet.cloud_dataset import CloudDataset
-except ImportError:
-    from cloud_dataset import CloudDataset
+from cloud_dataset import CloudDataset
 
 torch.set_grad_enabled(False)
 

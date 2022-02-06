@@ -7,6 +7,46 @@ import matplotlib.pyplot as plt
 import pandas
 import argparse
 
+UNET_CUTOFF = 0.5
+
+def improve_iou(pred, pcut_hard=0.5, pcut_soft=0.3, sigma_smooth=10):#, chip_id, data_dir_out="../data/maximize_iou_predictions/"):
+    """
+    By visual examination of labels, I see:
+
+    1.) Bright stand-alone clouds have (relatively) sharp boundaries.
+        Predictions are quite certain, and look very similar to true label
+
+    2.) Dimmer/wispy clouds have much less sharp boundaries, as if someone just lazily drew a polygon around it. 
+    Predictions here are not as certain, and in general are more lumpy than the "true" labels
+
+    So, to maximize IoU:
+
+    1.) When prediction is sure its a cloud, trust it
+    2.) When prediction is less certain//clumpy/whispy, smooth it, then trust it with lower cutoff
+    """
+    
+ 
+    pred_in = pred.copy()
+    pred_out_hard = np.zeros_like(pred_in).astype("uint8")
+
+    mask_hard = pred_in > pcut_hard
+    pred_out_hard[mask_hard] = 1.
+
+    # lessen hard predictions
+    pred_in[mask_hard] = pcut_soft
+
+    pred_in_smooth = gaussian_filter(pred_in, sigma_smooth)
+
+    mask_soft = pred_in_smooth > pcut_soft
+
+    pred_out_soft = pred_out_hard.copy()
+    pred_out_soft[mask_soft] = 1.
+
+    pred_final = np.clip(pred_out_hard+pred_out_soft, 0, 1)
+    
+    return pred_final
+             
+
 def load_labels(data_dir, image_id, bad_chip_label_path):
     labels = np.load(data_dir/f'labels_{image_id}.npy')
     chip_ids = np.load(data_dir/f'chip_ids_{image_id}.npy')
@@ -28,10 +68,23 @@ def load_feature(data_dir, image_id, feature_str):
     feature_smoothed = feature_smoothed.astype('uint8')
     return feature, feature_smoothed
 
+def load_unet(data_dir, image_id, feature_str):
+    unet = np.load(data_dir/f'preds_{feature_str}_{image_id}.npy')
+    unet_smoothed = unet.copy()
+    for i in range(unet.shape[0]):
+        unet_smoothed[i, ...] = improve_iou(unet[i, ...])
+    
+    unet = (unet > UNET_CUTOFF) * 1
+    #unet_smoothed = (unet_smoothed > 0.1) * 1.
+    unet = unet.astype('uint8')
+    unet_smoothed = unet_smoothed.astype('uint8')
+    return unet, unet_smoothed
+
 def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str):
     intersection_unet_and_feature = [0]*11
     intersection_unet_or_feature = [0]*11
     intersection_unet = [0]*11
+    intersection_unet_smoothed = [0]*11
     intersection_feature = [0]*11
     intersection_unet_and_feature_smoothed = [0]*11
     intersection_unet_or_feature_smoothed = [0]*11
@@ -40,6 +93,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
     union_unet_and_feature = [0]*11
     union_unet_or_feature = [0]*11
     union_unet = [0]*11
+    union_unet_smoothed = [0]*11
     union_feature = [0]*11
     union_unet_and_feature_smoothed = [0]*11
     union_unet_or_feature_smoothed = [0]*11
@@ -54,7 +108,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
             end_img = start_img + 100
         image_id = f'{start_img:06d}_{end_img:06d}'
 
-        unet = np.load(data_dir/f'preds_{unet_str}_{image_id}.npy')
+        unet, unet_smoothed = load_unet(data_dir, image_id, unet_str)
 
         labels = load_labels(data_dir, image_id, bad_chip_label_path)
         pixelLC = np.load(data_dir/f'LC_{image_id}.npy')
@@ -63,6 +117,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
         feature_all = feature.flatten()
         feature_smoothed_all = feature_smoothed.flatten()
         unet_all = unet.flatten()
+        unet_smoothed_all = unet_smoothed.flatten()
         labels_all = labels.flatten()
         pixelLC_all = pixelLC.flatten()
 
@@ -73,6 +128,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
             feature = feature_all[mask]
             feature_smoothed = feature_smoothed_all[mask]
             unet = unet_all[mask]
+            unet_smoothed = unet_smoothed_all[mask]
             labels = labels_all[mask]
 
             unet_and_feature = unet & feature
@@ -83,6 +139,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
             intersection_unet_and_feature[LC] += np.sum(unet_and_feature & labels)
             intersection_unet_or_feature[LC] += np.sum(unet_or_feature & labels)
             intersection_unet[LC] += np.sum(unet & labels)
+            intersection_unet_smoothed[LC] += np.sum(unet_smoothed & labels)
             intersection_feature[LC] += np.sum(feature & labels)
             intersection_unet_and_feature_smoothed[LC] += np.sum(unet_and_feature_smoothed & labels)
             intersection_unet_or_feature_smoothed[LC] += np.sum(unet_or_feature_smoothed & labels)
@@ -91,6 +148,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
             union_unet_and_feature[LC] += np.sum(unet_and_feature | labels)
             union_unet_or_feature[LC] += np.sum(unet_or_feature | labels)
             union_unet[LC] += np.sum(unet | labels)
+            union_unet_smoothed[LC] += np.sum(unet_smoothed | labels)
             union_feature[LC] += np.sum(feature | labels)
             union_unet_and_feature_smoothed[LC] += np.sum(unet_and_feature_smoothed | labels)
             union_unet_or_feature_smoothed[LC] += np.sum(unet_or_feature_smoothed | labels)
@@ -102,6 +160,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
         print(f'LC {LC}: unet | feature_smoothed: {intersection_unet_or_feature_smoothed[LC]/union_unet_or_feature_smoothed[LC]}')
         print(f'LC {LC}: unet & feature_smoothed: {intersection_unet_and_feature_smoothed[LC]/union_unet_and_feature_smoothed[LC]}')
         print(f'LC {LC}: unet: {intersection_unet[LC]/union_unet[LC]}')
+        print(f'LC {LC}: unet_cmoothed: {intersection_unet_smoothed[LC]/union_unet_smoothed[LC]}')
         print(f'LC {LC}: feature: {intersection_feature[LC]/union_feature[LC]}')
         print(f'LC {LC}: feature_smoothed: {intersection_feature_smoothed[LC]/union_feature_smoothed[LC]}')
         print('')
@@ -111,6 +170,7 @@ def calculate_combined_ious(data_dir, bad_chip_label_path, unet_str, feature_str
     print(f'unet | feature_smoothed: {sum(intersection_unet_or_feature_smoothed)/sum(union_unet_or_feature_smoothed)}')
     print(f'unet & feature_smoothed: {sum(intersection_unet_and_feature_smoothed)/sum(union_unet_and_feature_smoothed)}')
     print(f'unet: {sum(intersection_unet)/sum(union_unet)}')
+    print(f'unet_smoothed: {sum(intersection_unet_smoothed)/sum(union_unet_smoothed)}')
     print(f'feature: {sum(intersection_feature)/sum(union_feature)}')
     print(f'feature_smoothed: {sum(intersection_feature_smoothed)/sum(union_feature_smoothed)}')
 

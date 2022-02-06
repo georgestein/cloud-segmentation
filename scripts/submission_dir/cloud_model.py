@@ -14,13 +14,13 @@ import torchmetrics
 try:
     from .cloud_dataset import CloudDataset
     from .losses import intersection_and_union
-    from .losses import dice_loss, power_jaccard
+    from .losses import dice_loss, power_jaccard, WeightedFocalLoss
     from .plotting_tools import plot_prediction_grid
     
 except ImportError:
     from cloud_dataset import CloudDataset
     from losses import intersection_and_union
-    from losses import dice_loss, power_jaccard
+    from losses import dice_loss, power_jaccard, WeightedFocalLoss
     from plotting_tools import plot_prediction_grid
     
 class CloudModel(pl.LightningModule):
@@ -71,6 +71,10 @@ class CloudModel(pl.LightningModule):
         self.segmentation_model = self.hparams.get("segmentation_model", "unet")
         self.encoder_name = self.hparams.get("encoder_name", "resnet18")
         self.weights = self.hparams.get("weights", None)
+        
+        self.encoder_depth = self.hparams.get("encoder_depth", 5)
+        self.decoder_channels = [2**(i+4) for i in range(self.encoder_depth)][::-1]
+
         self.decoder_attention_type = self.hparams.get("decoder_attention_type", None)
         
         self.scale_feature_channels = self.hparams.get("scale_feature_channels", None)
@@ -191,16 +195,19 @@ class CloudModel(pl.LightningModule):
         """
         return self.model(image).view(-1, 512, 512)
 
-    def calculate_loss(self, chip, label, preds):
+    def calculate_loss(self, x, label, preds):
         if self.loss_function.upper()=="BCE":
             loss = torch.nn.BCEWithLogitsLoss(reduction="none")(preds, label.float()).mean()
             
-        if self.loss_function.upper()=="DICE":
+        elif self.loss_function.upper()=="DICE":
             loss = dice_loss(preds, label)
             
-        if self.loss_function.upper()=="JACCARD":
-            loss = power_jaccard(preds, label, power_val=1.)
-
+        elif self.loss_function.upper()=="JACCARD":
+            loss = power_jaccard(preds, label, power_val=1.75)
+            
+        if self.loss_function.upper()=="FOCAL":
+            loss = WeightedFocalLoss()(x, preds, label).mean()
+            
         return loss
 
     def training_step(self, batch: dict, batch_idx: int):
@@ -230,12 +237,11 @@ class CloudModel(pl.LightningModule):
         # Forward pass
         preds = self.forward(x)
 
-        if self.loss_function == 'BCE':
+        if self.loss_function.upper()=='BCE' or self.loss_function.upper()=="FOCAL":
             loss = self.calculate_loss(x, y, preds)
 
-        preds = torch.sigmoid(preds)
-        
-        if self.loss_function != 'BCE':
+        else:
+            preds = torch.sigmoid(preds)
             loss = self.calculate_loss(x, y, preds)
         
         # Log some tracking params
@@ -442,6 +448,8 @@ class CloudModel(pl.LightningModule):
                 encoder_name=self.encoder_name,
                 encoder_weights=self.weights,
                 in_channels=self.num_channels,
+                encoder_depth=self.encoder_depth,
+                decoder_channels=self.decoder_channels,
                 classes=1,
                 decoder_attention_type=self.decoder_attention_type,
             )
@@ -456,6 +464,7 @@ class CloudModel(pl.LightningModule):
                 in_channels=self.num_channels,
                 classes=1,
             )
+            
             if self.gpu:
                 unet_model.cuda()
 

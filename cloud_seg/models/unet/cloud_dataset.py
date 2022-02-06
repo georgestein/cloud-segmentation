@@ -24,7 +24,6 @@ class CloudDataset(torch.utils.data.Dataset):
     dictionary containing chip ids, image tensors, and
     label masks (where available).
     """
-
     def __init__(
         self,
         x_paths: pd.DataFrame,
@@ -35,6 +34,7 @@ class CloudDataset(torch.utils.data.Dataset):
         custom_features: str = None,
         cloudbank: Optional[pd.DataFrame] = None,
         cloud_transforms: Optional[list] = None,
+        use_npy_labels: bool = False,
     ):
         """
         Instantiate the CloudDataset class.
@@ -62,6 +62,8 @@ class CloudDataset(torch.utils.data.Dataset):
         self.transforms = transforms
         self.scale_feature_channels = scale_feature_channels
         self.custom_features = custom_features
+        
+        self.use_npy_labels = use_npy_labels
         
         self.bands = bands
         self.band_to_ind = {k: v for v, k in enumerate(bands)}
@@ -95,7 +97,18 @@ class CloudDataset(torch.utils.data.Dataset):
             if (label_path != 'none') and (label_path != 'cloudless'):
                 # with rasterio.open(label_path) as lp:
                 #     y_arr = lp.read(1).astype("float32")
-                y_arr = get_array(label_path)    
+                
+                # check if extension .tif or .npy
+                
+                filename, file_ext = os.path.splitext(label_path)
+                if self.use_npy_labels:
+                    filename, file_ext = os.path.splitext(label_path)
+                    y_arr = np.load(filename+'.npy')
+                    pcut = np.random.normal(0.5, 0.1)
+                    y_arr = (y_arr > pcut).astype(np.float32)
+                                        
+                else:
+                    y_arr = get_array(label_path)
 
             if label_path == 'cloudless':
                 # This is a cloudless image, so sample a random cloud chip from cloudbank
@@ -128,6 +141,9 @@ class CloudDataset(torch.utils.data.Dataset):
                 x_arr_clouds = np.stack(band_arrs, axis=-1)
                 
                 # Apply special augmentations to clouds and cloud labels
+                if self.transforms:
+                    x_arr = self.transforms(image=x_arr)["image"]
+                
                 if self.cloud_transforms is not None:
                     
                     # want to transform both y_arr and opacity_arr together
@@ -154,7 +170,7 @@ class CloudDataset(torch.utils.data.Dataset):
         # Apply data augmentations, if provided
         if self.labels is not None:
             # Apply same data augmentations to the label
-            if self.transforms:
+            if self.transforms and label_path != 'cloudless':
                 transformed = self.transforms(image=x_arr, mask=y_arr)
                 x_arr = transformed["image"]
                 y_arr = transformed["mask"]
