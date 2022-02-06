@@ -7,10 +7,5 @@ bands = ['B02', 'B03', 'B04', 'B08',
          'SCL', 'LC']
 
 
-for i in range(4):
-    create_compiled_dataset(bands[i*4:min((i+1)*4, len(bands))], 'FWHM6', sample_by_LC=False, smooth_sigma=2.55)
-    create_chip_mask(bad_chip_path, 'FWHM6')
-
-for i in range(4):
-    create_compiled_dataset(bands[i*4:min((i+1)*4, len(bands))], 'FWHM6_LC', sample_by_LC=True, smooth_sigma=2.55)
-    create_chip_mask(bad_chip_path, 'FWHM6_LC')
+create_compiled_dataset(bands[0], 'unetpreds', sample_by_LC=False, smooth_sigma=None)
+create_compiled_dataset(bands[0], 'unetpreds', sample_by_LC=True, smooth_sigma=None)
