@@ -31,6 +31,8 @@ import multiprocessing
 from cloud_seg.utils import chip_vis, utils
 from cloud_seg.io import io
 
+PCUT = 0.465
+
 DATA_DIR = Path.cwd().parent.resolve() / "data/"
 DATA_DIR_CLOUDS = DATA_DIR / 'clouds/'
 DATA_DIR_CLOUDLESS = DATA_DIR / 'cloudless/'
@@ -40,12 +42,12 @@ DATA_DIR_CLOUDLESS_TIF = DATA_DIR / 'cloudless_tif/'
 # DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/"
 DATA_DIR_OUT = DATA_DIR / "big_numpy_arrays/nchips_100/" #sorted/"
 
-# PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_resnet18_bce_vfrc_customfeats_None_2022-01-17/predictions/"
-# PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/unet/4band_originaldata_cloudaugment_resnet18_bce_vfrc_customfeats_None_2022-01-24/predictions/"
 #PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/submission_best/predictions"
 PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/submission_dir/predictions"
 
 #PREDICTION_DIR = DATA_DIR / "predictions_best"
+
+#PREDICTION_DIR = Path.cwd().parent.resolve() / "trained_models/test_submission/predictions"
 
 TRAIN_FEATURES = DATA_DIR / "train_features"
 TRAIN_FEATURES_NEW = DATA_DIR / "train_features_new"
@@ -152,8 +154,8 @@ def intersection_and_union(pred, true):
     """
 
     # Intersection and union totals                                                                             
-    pred_flattened = pred.flatten()
-    true_flattened = true.flatten()
+    pred_flattened = pred.flatten() > PCUT
+    true_flattened = true.flatten() 
 
     intersection = np.logical_and(true_flattened, pred_flattened)/pred_flattened.shape[0]
     union = np.logical_or(true_flattened, pred_flattened)/pred_flattened.shape[0]

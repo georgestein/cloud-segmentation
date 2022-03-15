@@ -168,7 +168,7 @@ def construct_cloudbank_dataframe(df_val, params: dict, make_val=False):
 
 def load_validation_dataframe(isplit: int, params: dict):
     
-    file_name_in = f"validate_features_meta_cv{isplit}_new.csv"
+    file_name_in = f"validate_features_meta_cv{isplit}.csv"
     # file_name_in = f"validate_features_meta_seed{params['seed']}_cv{isplit}.csv"
 
     df_val = pd.read_csv(DATA_DIR_OUT / file_name_in)
@@ -430,8 +430,7 @@ def main():
     if params['extract_clouds']:
         # Extract all clouds from pairs of cloudy and cloudless chips
         run_make_clouds(params)
-
-    """
+    
     for isplit in range(params['num_cross_validation_splits']):
         df_val = load_validation_dataframe(isplit, params)
         
@@ -440,6 +439,6 @@ def main():
 
             if not params['dont_save_to_disk']:
                 save_dataframe_to_disk(df_meta, isplit, params, make_val=make_val)
-    """
+  
 if __name__=="__main__":
     main()

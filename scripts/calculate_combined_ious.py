@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import pandas
 import argparse
 
-UNET_CUTOFF = 0.5
+UNET_CUTOFF = 0.4
 
 def improve_iou(pred, pcut_hard=0.5, pcut_soft=0.3, sigma_smooth=10):#, chip_id, data_dir_out="../data/maximize_iou_predictions/"):
     """
@@ -63,6 +63,7 @@ def load_feature(data_dir, image_id, feature_str):
     feature_smoothed = feature.copy()
     for i in range(feature.shape[0]):
         feature_smoothed[i, ...] = gaussian_filter(feature[i, ...], 8)
+#    feature_smoothed = feature.copy() #gaussian_filter(feature[i, ...], 8)
     feature_smoothed = feature_smoothed > 0.1
     feature = feature.astype('uint8')
     feature_smoothed = feature_smoothed.astype('uint8')
@@ -71,9 +72,10 @@ def load_feature(data_dir, image_id, feature_str):
 def load_unet(data_dir, image_id, feature_str):
     unet = np.load(data_dir/f'preds_{feature_str}_{image_id}.npy')
     unet_smoothed = unet.copy()
-    for i in range(unet.shape[0]):
-        unet_smoothed[i, ...] = improve_iou(unet[i, ...])
-    
+#    for i in range(unet.shape[0]):
+#        unet_smoothed[i, ...] = improve_iou(unet[i, ...])
+
+    unet_smoothed = unet.copy()
     unet = (unet > UNET_CUTOFF) * 1
     #unet_smoothed = (unet_smoothed > 0.1) * 1.
     unet = unet.astype('uint8')
