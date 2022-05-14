@@ -9,7 +9,7 @@ This repository outlines our work to predict cloud cover in satellite imagery, u
 
 Our data-centric approach consisted of four main components
 
-1. Data discovery to obtain a heuristic understanding of the dataset and identify useful combinations of features for use in model training through visualization, statistical comparison of feature distributions, and exploration of feature improtance in a boosted random forest classifer.
+1. Data discovery to obtain a heuristic understanding of the dataset and identify useful combinations of features for use in model training through visualization, statistical comparison of feature distributions, and exploration of feature importance in a boosted random forest classifer.
 2. Obtain and leverage vast amounts of additional (unlabelled) satellite imagery, achieved through a series of API calls to [Microsoft' s Planetary Computer](https://planetarycomputer.microsoft.com/)
 3. Design a custom set of physically-motivated data augmentations to further expand the effective dataset size (*which required training 10,000 individual Neural Networks!*).
 4. Identify optimal models, and train an ensemble of convolutional neural network segmentation models to predict cloud cover.
@@ -31,11 +31,21 @@ Competitors were given a training set of ~10,000 4-band satellite images from th
 
 Any additional data from the Planetary Computer, whether it be additional bands for each image, or seperate locations/observation times, was allowed to be used. Competitors' rankings in the contest was scored by the highest Intersection over Union (IoU) of the predicted cloud pixels vs the true cloud labels on a hidden test.   
 
-## Dataset Investigation and Feature Prediction
+## Dataset Investigation and Feature-Based Classification
 
-**For Dana**
+With data from 11 bands available (including additional data on the Planetary Computer), and considering band intensities, ratios, and normalized band differences (band1-band2/(band1+band2)), we had a total of 121 possible features to choose from.  
 
-Maybe Pretty analysis Plot? Expand as much as you want
+We started with simple analyses and visualizations of all features. We employed the Kolmogorov–Smirnov test to downselect from the original 121 possible features by removing features with similar distributions in cloudy and cloudless pixels.  In particular, we found that Band 1 was a powerful cloud discriminator, and that in general ratios or differences between intensities in high- and low-wavelengths bands were more powerful than unnormalized band intensities themselves, suggesting that colour is important in identifying cloud cover.  Interestingly, Band 1 has much coarser spatial resolution (60 m) than the bands provided in the competition (10 m) - the smoothness of the labels may contribute to the importance of Band 1.
+
+There is currently an algorithm in use on Sentinal-2 data for [land cover classification](https://sentinels.copernicus.eu/web/sentinel/technical-guides/sentinel-2-msi/level-2a/algorithm) that detects cloud cover, and we ensured that all features leveraged in cloud classification in that algorithm were included in our down-selected set before proceeding.  Finally, we attempted to remove redundancies in the selected features by selecting a single feature from the ratio and normalized difference between any pair of bands.  This left us with 15 features.
+
+We trained a gradient-boosted random forest classifer (CatBoost) using our identified optimal set of features.  CatBoost is packaged with several tools for model analysis, including calculation of feature importance (the average change in model prediction in response to changes in the feature value) and SHAP values (per-prediction quantifications of the change in the model prediction if a given feature was set to some baseline value).  From this, we identified our best 6 features as:  \[B01 B02 B03/B01 B08/B03 B02/B03 B01/B11\].
+
+The classifier primarily underpredicted the cloud cover labels, but overpredicted cloud cover in built-up areas or areas with flooded vegetation where bright regions were mistaken as cloud. Visual inspection showed that the model tended to miss wispy cloud, as well as pixels adjacent to cloud that were included in the labels.
+
+To evaluate the effect of the landcover on the performance of our model, we used the landcover classifications available from the Planetary Computer.  We identified landcover classes on which our current model was performing poorly, and trained additional models on subsets of data solely from each landcover class, in order to judge the benefit of weighting the training set more heavily towards more difficult landcover.  While this did improve the model predictions, the underprediction of cloud cover remained the primary issue for our model.
+
+We used both image segmentation with the watershed algorithm on the topology of our labels as well as smoothing with a simple 2-D kernel to attempt to remedy this issue.  While these did improve the IoU of our model, the feature-based model still did not add value to the CNN ensemble discussed below and was not included in our final submission.
 
 ## Aquiring Additional Data
 
