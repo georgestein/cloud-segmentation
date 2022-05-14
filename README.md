@@ -9,7 +9,7 @@ This repository outlines our work to predict cloud cover in satellite imagery, u
 
 Our data-centric approach consisted of four main components
 
-1. Perform data discovery through to obtain a wide understanding of the dataset and identify useful sets of data features for model training (DANA)
+1. Data discovery to obtain a heuristic understanding of the dataset and identify useful combinations of features for use in model training through visualization, statistical comparison of feature distributions, and exploration of feature improtance in a boosted random forest classifer.
 2. Obtain and leverage vast amounts of additional (unlabelled) satellite imagery, achieved through a series of API calls to [Microsoft' s Planetary Computer](https://planetarycomputer.microsoft.com/)
 3. Design a custom set of physically-motivated data augmentations to further expand the effective dataset size (*which required training 10,000 individual Neural Networks!*).
 4. Identify optimal models, and train an ensemble of convolutional neural network segmentation models to predict cloud cover.
