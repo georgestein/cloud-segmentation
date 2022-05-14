@@ -9,7 +9,8 @@ This repository outlines our work to predict cloud cover in satellite imagery, u
 
 Our data-centric approach consisted of four main components:
 
-1. Perform data discovery through to obtain a thourough understanding of the dataset and identify useful sets of data features for model training (DANA)
+
+1. Data discovery to obtain a heuristic understanding of the dataset and identify useful combinations of features for use in model training through visualization, statistical comparison of feature distributions, and exploration of feature importance in a boosted random forest classifer.
 2. Obtain and leverage vast amounts of additional (unlabelled) satellite imagery, achieved through a series of API calls to [Microsoft' s Planetary Computer](https://planetarycomputer.microsoft.com/)
 3. Design a custom set of physically-motivated data augmentations to further expand the effective dataset size (*which required training 10,000 individual Neural Networks!*).
 4. Identify optimal feature/model sets, and train an ensemble of convolutional neural network segmentation models to predict cloud cover.
@@ -20,7 +21,7 @@ Our data-centric approach consisted of four main components:
 
 ## Competition Details
 
-Competitetors were given a training set of ~10,000 4-band satellite images from the Sentinal-2 mission, and a corresponding label for each pixel - no cloud (0) or cloud (1). Each band image was provided as a 512 pixel x 512 pixel GeoTiff, and each pixel had a real-world resolution of 10m:
+Competitors were given a training set of ~10,000 4-band satellite images from the Sentinal-2 mission, and a corresponding label for each pixel - no cloud (0) or cloud (1). Each band image was provided as a 512 pixel x 512 pixel GeoTiff, and each pixel had a real-world resolution of 10m:
 
 | Band | Description | Center Wavelength |
 | ---- | ----------- | ----------------- | 
@@ -29,19 +30,30 @@ Competitetors were given a training set of ~10,000 4-band satellite images from 
 | B04 |	Red visible light | 665 nm |
 | B08 |	Near infrared light | 835 nm |
 
-Any additional data from the Planetary Computer, whether it be additional bands for each image, or seperate locations/observation times, was allowed to be used. Competitors ranking in the contest was determined by the highest Intersection over Union (IoU) of the predicted cloud pixels vs the true cloud labels on a hidden test set.   
 
-## Dataset Investigation and Feature Prediction
+Any additional data from the Planetary Computer, whether it be additional bands for each image, or seperate locations/observation times, was allowed to be used. Competitors' rankings in the contest was scored by the highest Intersection over Union (IoU) of the predicted cloud pixels vs the true cloud labels on a hidden test.   
 
-**For Dana**
+## Dataset Investigation and Feature-Based Classification
 
-Maybe Pretty analysis Plot? Expand as much as you want
+With data from 11 bands available (including additional data on the Planetary Computer), and considering band intensities, ratios, and normalized band differences (band1-band2/(band1+band2)), we had a total of 121 possible features to choose from.  
+
+We started with simple analyses and visualizations of all features. We employed the Kolmogorov–Smirnov test to downselect from the original 121 possible features by removing features with similar distributions in cloudy and cloudless pixels.  In particular, we found that Band 1 was a powerful cloud discriminator, and that in general ratios or differences between intensities in high- and low-wavelengths bands were more powerful than unnormalized band intensities themselves, suggesting that colour is important in identifying cloud cover.  Interestingly, Band 1 has much coarser spatial resolution (60 m) than the bands provided in the competition (10 m) - the smoothness of the labels may contribute to the importance of Band 1.
+
+There is currently an algorithm in use on Sentinal-2 data for [land cover classification](https://sentinels.copernicus.eu/web/sentinel/technical-guides/sentinel-2-msi/level-2a/algorithm) that detects cloud cover, and we ensured that all features leveraged in cloud classification in that algorithm were included in our down-selected set before proceeding.  Finally, we attempted to remove redundancies in the selected features by selecting a single feature from the ratio and normalized difference between any pair of bands.  This left us with 15 features.
+
+We trained a gradient-boosted random forest classifer (CatBoost) using our identified optimal set of features.  CatBoost is packaged with several tools for model analysis, including calculation of feature importance (the average change in model prediction in response to changes in the feature value) and SHAP values (per-prediction quantifications of the change in the model prediction if a given feature was set to some baseline value).  From this, we identified our best 6 features as:  \[B01 B02 B03/B01 B08/B03 B02/B03 B01/B11\].
 
 | ![fig1.jpg](figures/catboost_predictions.png) | 
 |:--:| 
 | *Feature-based predictions*|
 
-## Aquireing Additional Data
+The classifier primarily underpredicted the cloud cover labels, but overpredicted cloud cover in built-up areas or areas with flooded vegetation where bright regions were mistaken as cloud. Visual inspection showed that the model tended to miss wispy cloud, as well as pixels adjacent to cloud that were included in the labels.
+
+To evaluate the effect of the landcover on the performance of our model, we used the landcover classifications available from the Planetary Computer.  We identified landcover classes on which our current model was performing poorly, and trained additional models on subsets of data solely from each landcover class, in order to judge the benefit of weighting the training set more heavily towards more difficult landcover.  While this did improve the model predictions, the underprediction of cloud cover remained the primary issue for our model.
+
+We used both image segmentation with the watershed algorithm on the topology of our labels as well as smoothing with a simple 2-D kernel to attempt to remedy this issue.  While these did improve the IoU of our model, the feature-based model still did not add value to the CNN ensemble discussed below and was not included in our final submission.
+
+## Aquiring Additional Data
 
 To pull additional data we leveraged the public APIs for the Planetary Computer, and utilized multiprocessing to perform calls in parallel. We developed three main functionalities:
 
@@ -80,7 +92,7 @@ Through visual inspection we determined that cloud pixels with luminence in visu
 | *A cloudy image from the training set (left), and the closest cloudless image of the same land area available on [Microsoft' s Planetary Computer](https://planetarycomputer.microsoft.com/) (middle), demonstrating signifigant seasonal changes. By training and applying our season transformer neural network (right) we can achieve much smaller differences between the training image and season transformed image. This allows us to extract the clouds much more accurately. Note that this requires training 10,000 individual neural networks in order to construct the full Cloud Bank - one network for each image pair!*|
 
 To mitigate this we trained a ***season transformer Neural Network (stNN) for each cloudy/cloudless image pair!***. This transformation uses the areas of the image not contaminated by clouds to better match the image taken on a cloudless day to the original cloudy image from the training set. stNN is trained using all pairs of non-cloud covered pixels, with the goal of transforming each pixel of the cloudless image x (x=[B02, B03, B04, B08, B11] cloudless), to each pixel of the cloudy training image y (y=[B02, B03, B04, B08, B11] cloudy). The network is a fully connected multilayer perceptron with two hidden layers, and each hidden layer has 8 units followed by a ReLU activation function. We train using a Mean Squared Error loss function with 75% of the data in a training set, and 25% saved for validation. We use the ADAM optimizer and train for 10 epochs, employing early stopping when the validation error has not decreased for 2 epochs. When training is complete we to transform the entire cloudless image into a better match to the cloudy one. After applying stNN to the cloudless version we now have the 'Cloudless Training Image' required to perform the cloud extraction outlined above.   
-    
+
 **The cloud image and mask can now be used to add clouds to any image on earth!**
 
 New Cloudy Image = (Clouds * Cloud Opacity) + (Cloudless + Clouds * labels) * (1-Cloud Opacity)
