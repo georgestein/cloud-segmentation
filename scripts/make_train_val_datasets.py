@@ -231,7 +231,7 @@ def split_train_val(df, params):
     for isplit in range(params['num_cross_validation_splits']):
         ind_start = num_locations_each * isplit
         ind_end   = num_locations_each * (isplit+1)
-        if isplit == params['num_cross_validation_splits'] - 1:
+        if (isplit == params['num_cross_validation_splits'] - 1) and (params['num_cross_validation_splits'] > 1):
             ind_end = len(location_ids)
         
         num_locations_isplit = ind_end-ind_start
@@ -275,6 +275,8 @@ def split_train_val(df, params):
 
         train_x_cloudless, train_y_cloudless = None, None
         if params['construct_cloudless']:
+            params['num_cloudless_chips'] = params['num_cloudless_chips_train']            
+            params['num_cloudless_chips_new_locations'] = params['num_cloudless_chips_new_locations_train']
             train_x_cloudless, train_y_cloudless = construct_cloudless_datafame(val_x, params, make_val=False)
             
             params['num_cloudless_chips'] = params['num_cloudless_chips_val']            
@@ -302,8 +304,8 @@ def save_train_val_to_disk(train_x, train_y, val_x, val_y, train_x_cloudless, tr
         train_x_cloudless.to_csv(DATA_DIR_OUT / f"train_features_cloudless_meta_cv{isplit}.csv", index=False)
         train_y_cloudless.to_csv(DATA_DIR_OUT / f"train_labels_cloudless_meta_cv{isplit}.csv", index=False)
         
-        train_x_cloudless.to_csv(DATA_DIR_OUT / f"validate_features_cloudless_meta_cv{isplit}.csv", index=False)
-        train_y_cloudless.to_csv(DATA_DIR_OUT / f"validate_labels_cloudless_meta_cv{isplit}.csv", index=False)
+        val_x_cloudless.to_csv(DATA_DIR_OUT / f"validate_features_cloudless_meta_cv{isplit}.csv", index=False)
+        val_y_cloudless.to_csv(DATA_DIR_OUT / f"validate_labels_cloudless_meta_cv{isplit}.csv", index=False)
 
 def main():
     
@@ -324,13 +326,13 @@ def main():
     parser.add_argument("--construct_cloudless", action="store_true",
                         help="Construct an additional dataframe of cloudless") 
     
-    parser.add_argument("--num_cloudless_chips", type=int, default=-1,
+    parser.add_argument("--num_cloudless_chips_train", type=int, default=-1,
                         help="Number of cloudless samples to include")
                    
     parser.add_argument("--num_cloudless_chips_val", type=int, default=-1,
                         help="Number of cloudless samples to include")
        
-    parser.add_argument("--num_cloudless_chips_new_locations", type=int, default=1000,
+    parser.add_argument("--num_cloudless_chips_new_locations_train", type=int, default=1000,
                         help="Number of cloudless samples from new locations not in original training to include") 
                    
     parser.add_argument("--num_cloudless_chips_new_locations_val", type=int, default=500,
@@ -364,6 +366,7 @@ def main():
     params['bands_use'] = sorted(params['bands'] + params['bands_new']) if params['bands_new'] is not None else params['bands']
     
     params['val_fraction'] = float(1./params['num_cross_validation_splits'])
+    # params['val_fraction'] = float(1./70)
 
     if params['verbose']: print("Parameters are: ", params)
     
